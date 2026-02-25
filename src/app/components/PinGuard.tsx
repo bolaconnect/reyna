@@ -3,6 +3,7 @@ import { Lock, LogOut } from 'lucide-react';
 import { auth } from '../../firebase/config';
 import { signOut } from 'firebase/auth';
 import { motion, AnimatePresence } from 'motion/react';
+import { useUserSettings } from '../hooks/useUserSettings';
 
 interface PinContextType {
     lockNow: () => void;
@@ -28,20 +29,31 @@ export async function hashPin(pin: string): Promise<string> {
 const AUTO_LOCK_MS = 30 * 60 * 1000;
 
 export function PinGuard({ children }: { children: ReactNode }) {
-    const [hasPin, setHasPin] = useState(() => !!localStorage.getItem('appPinHash'));
-    const [isLocked, setIsLocked] = useState(() => !!localStorage.getItem('appPinHash'));
+    const { prefs } = useUserSettings();
+    const [hasPin, setHasPinState] = useState(() => !!prefs.pinHash);
+    const [isLocked, setIsLocked] = useState(() => !!prefs.pinHash);
     const [pinInput, setPinInput] = useState('');
     const [error, setError] = useState(false);
 
+    // Update internal hasPin state when synced prefs change
+    useEffect(() => {
+        setHasPinState(!!prefs.pinHash);
+    }, [prefs.pinHash]);
+
     const lockNow = useCallback(() => {
-        if (localStorage.getItem('appPinHash')) {
+        if (prefs.pinHash) {
             setIsLocked(true);
             setPinInput('');
             setError(false);
         }
+    }, [prefs.pinHash]);
+
+    const setHasPin = useCallback((val: boolean) => {
+        // This is now handled by syncing the pinHash in useUserSettings
+        // But we keep the context signature for compatibility
+        setHasPinState(val);
     }, []);
 
-    useEffect(() => { setHasPin(!!localStorage.getItem('appPinHash')); }, []);
 
     useEffect(() => {
         if (!hasPin || isLocked) return;
@@ -66,7 +78,7 @@ export function PinGuard({ children }: { children: ReactNode }) {
     }, [hasPin, isLocked]);
 
     const tryUnlock = useCallback(async (val: string, showErrors = false) => {
-        const stored = localStorage.getItem('appPinHash');
+        const stored = prefs.pinHash;
         if (!stored) { setIsLocked(false); return; }
         if ((await hashPin(val)) === stored) {
             setIsLocked(false); setPinInput(''); setError(false);
@@ -75,7 +87,7 @@ export function PinGuard({ children }: { children: ReactNode }) {
             setPinInput('');
             setTimeout(() => setError(false), 800);
         }
-    }, []);
+    }, [prefs.pinHash]);
 
     const handleChange = (val: string) => {
         setPinInput(val);

@@ -73,6 +73,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 type PinMode = 'idle' | 'create' | 'change' | 'delete';
 
 function PinSection({ hasPin, setHasPin }: { hasPin: boolean; setHasPin: (v: boolean) => void }) {
+    const { prefs, update } = useUserSettings();
     const [mode, setMode] = useState<PinMode>('idle');
     const [pinForm, setPinForm] = useState({ old: '', new: '', confirm: '' });
     const [pinError, setPinError] = useState('');
@@ -86,15 +87,18 @@ function PinSection({ hasPin, setHasPin }: { hasPin: boolean; setHasPin: (v: boo
         setSaving(true);
         if (mode === 'create') {
             if (!pinForm.new || pinForm.new !== pinForm.confirm) { setPinError('Mã PIN không khớp'); setSaving(false); return; }
-            localStorage.setItem('appPinHash', await hashPin(pinForm.new));
+            await update({ pinHash: await hashPin(pinForm.new) });
             setHasPin(true); reset();
         } else {
-            const stored = localStorage.getItem('appPinHash');
+            const stored = prefs.pinHash;
             if ((await hashPin(pinForm.old)) !== stored) { setPinError('Mã PIN hiện tại không đúng'); setSaving(false); return; }
-            if (mode === 'delete') { localStorage.removeItem('appPinHash'); setHasPin(false); reset(); }
+            if (mode === 'delete') {
+                await update({ pinHash: null });
+                setHasPin(false); reset();
+            }
             else if (mode === 'change') {
                 if (!pinForm.new || pinForm.new !== pinForm.confirm) { setPinError('Mã PIN không khớp'); setSaving(false); return; }
-                localStorage.setItem('appPinHash', await hashPin(pinForm.new));
+                await update({ pinHash: await hashPin(pinForm.new) });
                 reset();
             }
         }

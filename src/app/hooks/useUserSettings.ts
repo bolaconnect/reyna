@@ -23,6 +23,8 @@ export interface UserPrefs {
     pageSize: number;
     // Visibility
     showSensitiveInfo: boolean;
+    // Security
+    pinHash: string | null;
 }
 
 const DEFAULTS: UserPrefs = {
@@ -32,6 +34,7 @@ const DEFAULTS: UserPrefs = {
     defaultTab: 'cards',
     pageSize: 20,
     showSensitiveInfo: false,
+    pinHash: null,
 };
 
 const LS_KEY = 'userPrefs';
