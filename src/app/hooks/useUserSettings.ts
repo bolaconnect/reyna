@@ -9,7 +9,7 @@
  * Firestore path: users/{uid}/meta/settings
  */
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -66,7 +66,7 @@ function writeLocal(prefs: UserPrefs) {
 // Singleton so multiple consumers share the same state
 let listeners: Array<(p: UserPrefs) => void> = [];
 let _prefs: UserPrefs = readLocal();
-let _synced = false;
+let _synced_uid: string | null = null;
 
 function notify(p: UserPrefs) {
     _prefs = p;
@@ -85,31 +85,29 @@ export function useUserSettings() {
         return () => { listeners = listeners.filter(l => l !== fn); };
     }, []);
 
-    // On first mount with a logged-in user, pull from Firestore once
+    // Real-time listener for settings
     useEffect(() => {
-        if (!user || _synced) return;
+        if (!user || _synced_uid === user.uid) return;
 
-        // Mark as synced immediately to prevent other concurrent hooks from firing
-        _synced = true;
+        _synced_uid = user.uid;
+        const ref = doc(db, 'users', user.uid, 'meta', 'settings');
 
-        (async () => {
-            try {
-                if (!user.uid) return;
-
-                const ref = doc(db, 'users', user.uid, 'meta', 'settings');
-                const snap = await getDoc(ref);
-                if (snap.exists()) {
-                    const remote = snap.data() as Partial<UserPrefs>;
-                    const merged = { ...DEFAULTS, ...readLocal(), ...remote };
-                    writeLocal(merged);
-                    notify(merged);
-                }
-            } catch (e) {
-                console.warn('Failed to load settings from Firestore', e);
-                // On failure, allow retry later
-                _synced = false;
+        const unsub = onSnapshot(ref, (snap) => {
+            if (snap.exists()) {
+                const remote = snap.data() as Partial<UserPrefs>;
+                const merged = { ...DEFAULTS, ...readLocal(), ...remote };
+                writeLocal(merged);
+                notify(merged);
             }
-        })();
+        }, (err) => {
+            console.warn('Settings sync error:', err);
+            _synced_uid = null;
+        });
+
+        return () => {
+            unsub();
+            _synced_uid = null;
+        };
     }, [user]);
 
     const update = useCallback((patch: Partial<UserPrefs>) => {
