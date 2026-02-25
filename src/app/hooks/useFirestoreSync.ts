@@ -7,12 +7,12 @@ import {
     Timestamp
 } from 'firebase/firestore';
 import { dbLocal } from '../lib/db';
-import { SyncService } from '../services/syncService';
+import { SyncService, SyncableCollection } from '../services/syncService';
 import { useAuth } from '../../contexts/AuthContext';
 import { db as firestoreDb } from '../../firebase/config';
 
 export function useFirestoreSync<T>(
-    collectionName: 'cards' | 'emails',
+    collectionName: SyncableCollection,
     refreshKey?: number
 ) {
     const { user } = useAuth();
@@ -24,7 +24,7 @@ export function useFirestoreSync<T>(
     // Load from local Dexie — excluding soft-deleted records
     const loadLocal = useCallback(async () => {
         if (!user) return;
-        const table = collectionName === 'cards' ? dbLocal.cards : dbLocal.emails;
+        const table = (SyncService as any).getTable ? (SyncService as any).getTable(collectionName) : (dbLocal as any)[collectionName];
         const items = await table.where('userId').equals(user.uid).toArray();
 
         // Filter out soft-deleted & sort by updatedAt desc
@@ -83,7 +83,7 @@ export function useFirestoreSync<T>(
                 unsub = onSnapshot(q, async (snapshot) => {
                     if (snapshot.empty) return;
 
-                    const table = (collectionName === 'cards' ? dbLocal.cards : dbLocal.emails) as any;
+                    const table = ((SyncService as any).getTable ? (SyncService as any).getTable(collectionName) : (dbLocal as any)[collectionName]) as any;
                     const updates: any[] = [];
                     const toDelete: string[] = [];
 

@@ -14,24 +14,34 @@ import {
 import { dbLocal } from '../lib/db';
 import { db as firestoreDb } from '../../firebase/config';
 
+export type SyncableCollection = 'cards' | 'emails' | 'alarms' | 'notifications';
+
 export class SyncService {
+    private static getTable(collectionName: SyncableCollection) {
+        switch (collectionName) {
+            case 'cards': return dbLocal.cards;
+            case 'emails': return dbLocal.emails;
+            case 'alarms': return dbLocal.alarms;
+            case 'notifications': return dbLocal.notifications;
+        }
+    }
+
     /**
      * Performs a delta sync for a collection.
      * Only fetches documents modified since the last sync time.
      */
     static async asyncSyncBatch(
-        collectionName: 'cards' | 'emails',
+        collectionName: SyncableCollection,
         userId: string,
         lastSyncTime: number
     ) {
         const BATCH_SIZE = 500;
         let currentLastSyncTime = lastSyncTime;
         let hasMore = true;
-        const table = (collectionName === 'cards' ? dbLocal.cards : dbLocal.emails) as any;
+        const table = this.getTable(collectionName) as any;
 
         if (currentLastSyncTime === 0) {
-            // FIRST SYNC: Paginated fetch to handle large legacy datasets (1000-5000 records)
-            // catching records that lack the 'updatedAt' field.
+            // FIRST SYNC: Paginated fetch
             let lastDoc = null;
             let maxFoundSyncTime = 0;
             let hasMoreInitial = true;
@@ -49,7 +59,7 @@ export class SyncService {
 
                 const data = snapshot.docs.map(doc => {
                     const d = doc.data();
-                    const updatedAt = d.updatedAt instanceof Timestamp ? d.updatedAt.toMillis() : 0;
+                    const updatedAt = d.updatedAt instanceof Timestamp ? d.updatedAt.toMillis() : (d.createdAt || Date.now());
                     if (updatedAt > maxFoundSyncTime) maxFoundSyncTime = updatedAt;
                     return {
                         id: doc.id,
@@ -70,7 +80,7 @@ export class SyncService {
             return currentLastSyncTime;
         }
 
-        // DELTA SYNC: Standard optimized loop
+        // DELTA SYNC
         while (hasMore) {
             const q = query(
                 collection(firestoreDb, collectionName),
@@ -106,27 +116,24 @@ export class SyncService {
             if (toUpsert.length > 0) await table.bulkPut(toUpsert);
             if (toDelete.length > 0) await table.bulkDelete(toDelete);
 
-            // Track latest updatedAt from all processed docs
             const allDocs = [...toUpsert];
             if (allDocs.length > 0) {
                 currentLastSyncTime = Math.max(...allDocs.map(d => d.updatedAt));
             }
 
-            // If we got fewer than BATCH_SIZE, we're likely done for now
             if (snapshot.size < BATCH_SIZE) {
                 hasMore = false;
             }
         }
 
-        // Final meta update
         await dbLocal.syncMeta.put({ userId, collectionName, lastSyncTime: currentLastSyncTime });
         return currentLastSyncTime;
     }
 
-    static async syncCollection(collectionName: 'cards' | 'emails', userId: string) {
+    static async syncCollection(collectionName: SyncableCollection, userId: string) {
         const meta = await dbLocal.syncMeta.get({ userId, collectionName });
         const lastSyncTime = meta ? meta.lastSyncTime : 0;
-        // If we have a lastSyncTime, try the delta query first; fallback if index not ready
+
         if (lastSyncTime > 0) {
             try {
                 return await this.asyncSyncBatch(collectionName, userId, lastSyncTime);
@@ -143,11 +150,8 @@ export class SyncService {
         return await this.asyncSyncBatch(collectionName, userId, 0);
     }
 
-    /**
-     * Performs a paginated server-side fetch from Firestore.
-     */
     static async fetchServerPage(
-        collectionName: 'cards' | 'emails',
+        collectionName: SyncableCollection,
         userId: string,
         pageSize: number,
         lastDoc: QueryDocumentSnapshot<DocumentData> | null = null
@@ -155,7 +159,7 @@ export class SyncService {
         let q = query(
             collection(firestoreDb, collectionName),
             where('userId', '==', userId),
-            orderBy('updatedAt', 'desc'), // Or any consistent sorting
+            orderBy('updatedAt', 'desc'),
             limit(pageSize)
         );
 
@@ -166,8 +170,7 @@ export class SyncService {
         const snapshot = await getDocs(q);
         const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-        // Proactively save these to local cache as well
-        const table = (collectionName === 'cards' ? dbLocal.cards : dbLocal.emails) as any;
+        const table = this.getTable(collectionName) as any;
         await table.bulkPut(data.map(d => ({
             ...d,
             updatedAt: (d as any).updatedAt instanceof Timestamp ? (d as any).updatedAt.toMillis() : Date.now()

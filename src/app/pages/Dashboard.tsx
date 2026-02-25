@@ -18,6 +18,7 @@ import { SettingsModal, useSettings } from '../components/SettingsModal';
 import { PinGuard, usePin } from '../components/PinGuard';
 import { dbLocal } from '../lib/db';
 import { motion, AnimatePresence } from 'motion/react';
+import { useFirestoreSync } from '../hooks/useFirestoreSync';
 
 type Tab = 'cards' | 'emails';
 
@@ -27,6 +28,10 @@ export function Dashboard() {
   const navigate = useNavigate();
   const { settings, updateSettings } = useSettings();
   const { lockNow, hasPin } = usePin();
+
+  // Background sync for global features
+  const { syncing: alarmsSyncing } = useFirestoreSync('alarms');
+  const { syncing: notifsSyncing } = useFirestoreSync('notifications');
 
   const [tab, setTab] = useState<Tab>(settings.defaultTab);
   const [collapsed, setCollapsed] = useState(() => {

@@ -42,6 +42,7 @@ export interface AlarmRecord {
     fired: 0 | 1;         // 0 = false, 1 = true (for IndexedDB index compatibility)
     doneAt?: number;      // unix ms when user marked as done
     createdAt: number;
+    updatedAt: number;
 }
 
 export interface NotificationRecord {
@@ -53,6 +54,7 @@ export interface NotificationRecord {
     collection?: 'cards' | 'emails'; // for navigation
     readAt?: number;      // undefined = unread
     createdAt: number;
+    updatedAt: number;
 }
 
 export class AppDB extends Dexie {
@@ -69,12 +71,12 @@ export class AppDB extends Dexie {
             emails: 'id, userId, status, updatedAt',
             syncMeta: '[userId+collectionName]',
         });
-        this.version(4).stores({
+        this.version(5).stores({
             cards: 'id, userId, status, updatedAt',
             emails: 'id, userId, status, updatedAt',
             syncMeta: '[userId+collectionName]',
-            alarms: 'id, userId, recordId, triggerAt, fired, doneAt',
-            notifications: 'id, userId, createdAt, readAt, recordId, collection',
+            alarms: 'id, userId, recordId, triggerAt, fired, doneAt, updatedAt',
+            notifications: 'id, userId, createdAt, readAt, recordId, collection, updatedAt',
         });
     }
 }

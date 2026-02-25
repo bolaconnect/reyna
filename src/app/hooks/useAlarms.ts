@@ -2,6 +2,8 @@ import { useEffect, useCallback } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { dbLocal, AlarmRecord, NotificationRecord } from '../lib/db';
 import { useNotification } from './useNotification';
+import { doc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../../firebase/config';
 
 function uuid() {
     return crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
@@ -52,11 +54,18 @@ export function useAlarms({ userId, onNewNotification }: UseAlarmsOptions) {
                 recordId: alarm.recordId,
                 collection: alarm.collection,
                 createdAt: Date.now(),
+                updatedAt: Date.now(),
             };
             await dbLocal.notifications.add(notif);
+            // Sync notification to Firestore
+            await setDoc(doc(db, 'notifications', notif.id), {
+                ...notif,
+                updatedAt: serverTimestamp(),
+            });
 
             // 3. Delete the alarm immediately (user doesn't want history)
             await dbLocal.alarms.delete(alarm.id);
+            await deleteDoc(doc(db, 'alarms', alarm.id));
 
             onNewNotification?.();
         }
@@ -72,21 +81,28 @@ export function useAlarms({ userId, onNewNotification }: UseAlarmsOptions) {
 
     // ── CRUD helpers ──────────────────────────────────────
 
-    const addAlarm = useCallback(async (alarm: Omit<AlarmRecord, 'id' | 'userId' | 'fired' | 'createdAt'>) => {
+    const addAlarm = useCallback(async (alarm: Omit<AlarmRecord, 'id' | 'userId' | 'fired' | 'createdAt' | 'updatedAt'>) => {
         if (!userId) return;
         const record: AlarmRecord = {
+            ...alarm,
             id: uuid(),
             userId,
             fired: 0,
             createdAt: Date.now(),
-            ...alarm,
+            updatedAt: Date.now(),
         };
         await dbLocal.alarms.add(record);
+        // Sync to Firestore
+        await setDoc(doc(db, 'alarms', record.id), {
+            ...record,
+            updatedAt: serverTimestamp(),
+        });
         return record;
     }, [userId]);
 
     const deleteAlarm = useCallback(async (id: string) => {
         await dbLocal.alarms.delete(id);
+        await deleteDoc(doc(db, 'alarms', id));
     }, []);
 
     const getAlarmsForRecord = useCallback(async (recordId: string) => {
@@ -95,7 +111,9 @@ export function useAlarms({ userId, onNewNotification }: UseAlarmsOptions) {
     }, [userId]);
 
     const markAsDone = useCallback(async (id: string) => {
-        await dbLocal.alarms.update(id, { doneAt: Date.now() } as any);
+        const now = Date.now();
+        await dbLocal.alarms.update(id, { doneAt: now, updatedAt: now } as any);
+        await setDoc(doc(db, 'alarms', id), { doneAt: now, updatedAt: serverTimestamp() }, { merge: true });
     }, []);
 
     const nearestAlarmsMap = useLiveQuery(async () => {
