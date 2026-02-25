@@ -19,7 +19,23 @@ export function useMessaging(userId: string | undefined) {
                 return;
             }
 
-            const currentToken = await getToken(messaging, { vapidKey: VAPID_KEY });
+            let serviceWorkerRegistration;
+            if ('serviceWorker' in navigator) {
+                const baseUrl = import.meta.env.BASE_URL;
+                const swPath = `${baseUrl}firebase-messaging-sw.js`;
+                console.log('Registering Service Worker at:', swPath);
+
+                serviceWorkerRegistration = await navigator.serviceWorker.register(swPath, {
+                    scope: baseUrl
+                });
+                await navigator.serviceWorker.ready;
+                console.log('FCM Service Worker ready with scope:', serviceWorkerRegistration.scope);
+            }
+
+            const currentToken = await getToken(messaging, {
+                vapidKey: VAPID_KEY,
+                serviceWorkerRegistration
+            });
             if (currentToken) {
                 setToken(currentToken);
                 console.log('FCM Token secured.');

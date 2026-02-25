@@ -59,8 +59,8 @@ export function useNotification() {
                     const registration = await navigator.serviceWorker.getRegistration();
                     if (registration && registration.active) {
                         await registration.showNotification(title, {
-                            icon: '/vite.svg',
-                            badge: '/vite.svg',
+                            icon: 'logo.png',
+                            badge: 'logo.png',
                             ...notifOptions,
                         });
                         return null; // Return null as we can't attach onclick to SW notification easily here
@@ -72,8 +72,8 @@ export function useNotification() {
 
             // Fallback to traditional Notification API
             const notif = new Notification(title, {
-                icon: '/vite.svg',
-                badge: '/vite.svg',
+                icon: 'logo.png',
+                badge: 'logo.png',
                 ...notifOptions,
             });
 
