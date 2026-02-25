@@ -120,7 +120,7 @@ export function Dashboard() {
             className="group flex items-center border-b border-gray-100 px-3.5 py-3 gap-3.5 min-h-[56px] w-full hover:bg-gray-50 transition-colors text-left"
           >
             <div className="w-8 h-8 bg-white group-hover:bg-gray-50 rounded-lg flex items-center justify-center shrink-0 transition-colors overflow-hidden border border-gray-100">
-              <img src="/logo.png" alt="Logo" className="w-full h-full object-cover group-hover:hidden" />
+              <img src="logo.png" alt="Logo" className="w-full h-full object-cover group-hover:hidden" />
               <div className="hidden group-hover:flex">
                 {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
               </div>

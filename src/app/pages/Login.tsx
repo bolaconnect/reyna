@@ -74,7 +74,7 @@ export function Login() {
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm overflow-hidden">
-            <img src="/logo.png" alt="Reyna Logo" className="w-full h-full object-cover" />
+            <img src="logo.png" alt="Reyna Logo" className="w-full h-full object-cover" />
           </div>
           <h1 className="text-[22px] font-semibold text-gray-900 tracking-tight">
             Reyna
