@@ -404,10 +404,19 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange }: EmailsT
       if (!rec.email) continue;
       try {
         const targetUrl = `https://gamalogic.com/emailvrf/?emailid=${encodeURIComponent(rec.email)}&apikey=1ud7zt0id4fuayde2mj2bkvv0jny54n4&speed_rank=0`;
-        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
+        const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`;
+
         const res = await fetch(proxyUrl);
-        const proxyData = await res.json();
-        const data = JSON.parse(proxyData.contents);
+        const textData = await res.text(); // Read as text first to avoid crash
+
+        let data;
+        try {
+          data = JSON.parse(textData);
+        } catch (parseError) {
+          console.error('[EmailsTable] Proxy returned non-JSON:', textData.substring(0, 100));
+          continue;
+        }
+
         const vrfy = data?.gamalogic_emailid_vrfy?.[0];
         if (vrfy) {
           const liveStatus = vrfy.message || (vrfy.is_valid ? 'Valid ID' : 'Invalid');
