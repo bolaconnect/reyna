@@ -45,6 +45,7 @@ export interface EmailRecord {
   status?: string;
   note?: string;
   liveStatus?: string;
+  categoryId?: string;
   bookmarked?: boolean;
 }
 
@@ -52,6 +53,7 @@ interface EmailsTableProps {
   refreshKey?: number;
   searchQuery?: string;
   onSearchChange?: (val: string) => void;
+  selectedCategoryId?: string | null;
 }
 
 /** Format a single email record for quick-copy: fields separated by 2 spaces */
@@ -73,7 +75,7 @@ const TOAST_STYLE = {
   border: 'none',
 };
 
-export function EmailsTable({ refreshKey, searchQuery, onSearchChange }: EmailsTableProps) {
+export function EmailsTable({ refreshKey, searchQuery, onSearchChange, selectedCategoryId }: EmailsTableProps) {
   const { user } = useAuth();
   const { isVisible } = useVisibility();
   const [loading, setLoading] = useState(true);
@@ -220,6 +222,10 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange }: EmailsT
 
   // Filter logic
   const filteredEmails = emails.filter((email) => {
+    // 1. Category Filter
+    if (selectedCategoryId && email.categoryId !== selectedCategoryId) return false;
+
+    // 2. Global Search Query
     const s = filters.search.toLowerCase();
     const matchesSearch = !s || email.id.toLowerCase() === s || [
       email.email,
@@ -230,6 +236,7 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange }: EmailsT
       email.phone
     ].some(v => v?.toLowerCase().includes(s));
 
+    // 3. Toolbar Filters
     const matchesStatus = !filters.status || email.status?.toLowerCase().includes(filters.status.toLowerCase());
     const matchesNote = !filters.note || email.note?.toLowerCase().includes(filters.note.toLowerCase());
     const matchesBookmarked = !filters.bookmarked || email.bookmarked === true;
@@ -802,8 +809,8 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange }: EmailsT
         <td className="px-3 py-0 whitespace-nowrap">
           {rec.liveStatus ? (
             <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium leading-none ${isLiveValid
-                ? 'bg-green-100/80 text-green-700 border border-green-200/50'
-                : 'bg-red-100/80 text-red-700 border border-red-200/50'
+              ? 'bg-green-100/80 text-green-700 border border-green-200/50'
+              : 'bg-red-100/80 text-red-700 border border-red-200/50'
               }`}>
               {rec.liveStatus}
             </span>

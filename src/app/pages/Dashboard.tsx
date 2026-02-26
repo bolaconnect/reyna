@@ -17,6 +17,7 @@ import { NotificationCenter } from '../components/NotificationCenter';
 import { SettingsModal, useSettings } from '../components/SettingsModal';
 import { PinGuard, usePin } from '../components/PinGuard';
 import { dbLocal } from '../lib/db';
+import { CategoryMenu } from '../components/CategoryMenu';
 import { motion, AnimatePresence } from 'motion/react';
 import { useFirestoreSync } from '../hooks/useFirestoreSync';
 
@@ -45,6 +46,7 @@ export function Dashboard() {
   const [showAddEmail, setShowAddEmail] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedSearch, setSelectedSearch] = useState<string | null>(null);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const profileRef = useRef<HTMLDivElement>(null);
   const { permission } = useNotification();
 
@@ -175,6 +177,16 @@ export function Dashboard() {
               </button>
             ))}
           </nav>
+
+          {/* Email Categories Menu */}
+          <div className="border-t border-gray-50 flex-1 overflow-y-auto">
+            <CategoryMenu
+              collapsed={collapsed}
+              selectedCategoryId={selectedCategoryId}
+              onSelectCategory={setSelectedCategoryId}
+              currentTab={tab}
+            />
+          </div>
         </div>
 
         {/* Lock App Button */}
@@ -314,12 +326,14 @@ export function Dashboard() {
               refreshKey={refreshKey}
               searchQuery={selectedSearch ?? undefined}
               onSearchChange={() => setSelectedSearch(null)}
+              selectedCategoryId={selectedCategoryId}
             />
           ) : (
             <EmailsTable
               refreshKey={refreshKey}
               searchQuery={selectedSearch ?? undefined}
               onSearchChange={() => setSelectedSearch(null)}
+              selectedCategoryId={selectedCategoryId}
             />
           )}
         </div>

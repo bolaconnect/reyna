@@ -14,7 +14,7 @@ import {
 import { dbLocal } from '../lib/db';
 import { db as firestoreDb } from '../../firebase/config';
 
-export type SyncableCollection = 'cards' | 'emails' | 'alarms' | 'notifications';
+export type SyncableCollection = 'cards' | 'emails' | 'alarms' | 'notifications' | 'categories';
 
 export class SyncService {
     private static getTable(collectionName: SyncableCollection) {
@@ -23,6 +23,7 @@ export class SyncService {
             case 'emails': return dbLocal.emails;
             case 'alarms': return dbLocal.alarms;
             case 'notifications': return dbLocal.notifications;
+            case 'categories': return dbLocal.categories;
         }
     }
 

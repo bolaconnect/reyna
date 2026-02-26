@@ -15,6 +15,7 @@ export interface LocalCardRecord {
     cvv: string;
     status: string;
     note: string;
+    linkedEmails?: string[]; // Mảng các email ID
     updatedAt: number;
 }
 
@@ -29,6 +30,7 @@ export interface LocalEmailRecord {
     status?: string;
     note?: string;
     liveStatus?: string;
+    categoryId?: string; // Tên danh mục hoặc ID danh mục
     updatedAt: number;
 }
 
@@ -58,9 +60,17 @@ export interface NotificationRecord {
     updatedAt: number;
 }
 
+export interface CategoryRecord {
+    id: string;
+    userId: string;
+    name: string;
+    updatedAt: number;
+}
+
 export class AppDB extends Dexie {
     cards!: Table<LocalCardRecord>;
     emails!: Table<LocalEmailRecord>;
+    categories!: Table<CategoryRecord>;
     syncMeta!: Table<SyncMeta>;
     alarms!: Table<AlarmRecord>;
     notifications!: Table<NotificationRecord>;
@@ -72,12 +82,15 @@ export class AppDB extends Dexie {
             emails: 'id, userId, status, updatedAt',
             syncMeta: '[userId+collectionName]',
         });
-        this.version(5).stores({
-            cards: 'id, userId, status, updatedAt',
-            emails: 'id, userId, status, updatedAt',
+        this.version(6).stores({
+            cards: 'id, userId, status, updatedAt', // added linkedEmails implicitly (arrays aren't indexed here usually unless multiEntry)
+            emails: 'id, userId, status, categoryId, updatedAt',
+            categories: 'id, userId, name, updatedAt',
             syncMeta: '[userId+collectionName]',
             alarms: 'id, userId, recordId, triggerAt, fired, doneAt, updatedAt',
             notifications: 'id, userId, createdAt, readAt, recordId, collection, updatedAt',
+        }).upgrade(tx => {
+            // Add default structure if needed or handle migration
         });
     }
 }
