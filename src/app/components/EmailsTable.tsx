@@ -45,15 +45,14 @@ export interface EmailRecord {
   status?: string;
   note?: string;
   liveStatus?: string;
-  categoryId?: string;
   bookmarked?: boolean;
+  categoryId?: string | null;
 }
 
 interface EmailsTableProps {
   refreshKey?: number;
   searchQuery?: string;
   onSearchChange?: (val: string) => void;
-  selectedCategoryId?: string | null;
 }
 
 /** Format a single email record for quick-copy: fields separated by 2 spaces */
@@ -75,7 +74,7 @@ const TOAST_STYLE = {
   border: 'none',
 };
 
-export function EmailsTable({ refreshKey, searchQuery, onSearchChange, selectedCategoryId }: EmailsTableProps) {
+export function EmailsTable({ refreshKey, searchQuery, onSearchChange }: EmailsTableProps) {
   const { user } = useAuth();
   const { isVisible } = useVisibility();
   const [loading, setLoading] = useState(true);
@@ -222,10 +221,6 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange, selectedC
 
   // Filter logic
   const filteredEmails = emails.filter((email) => {
-    // 1. Category Filter
-    if (selectedCategoryId && email.categoryId !== selectedCategoryId) return false;
-
-    // 2. Global Search Query
     const s = filters.search.toLowerCase();
     const matchesSearch = !s || email.id.toLowerCase() === s || [
       email.email,
@@ -236,7 +231,6 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange, selectedC
       email.phone
     ].some(v => v?.toLowerCase().includes(s));
 
-    // 3. Toolbar Filters
     const matchesStatus = !filters.status || email.status?.toLowerCase().includes(filters.status.toLowerCase());
     const matchesNote = !filters.note || email.note?.toLowerCase().includes(filters.note.toLowerCase());
     const matchesBookmarked = !filters.bookmarked || email.bookmarked === true;

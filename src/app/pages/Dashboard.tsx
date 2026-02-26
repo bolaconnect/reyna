@@ -8,7 +8,8 @@ import { EmailsTable } from '../components/EmailsTable';
 import { QuickAddModal } from '../components/QuickAddModal';
 import { AddCardModal } from '../components/AddCardModal';
 import { AddEmailModal } from '../components/AddEmailModal';
-import { Plus, Zap, CreditCard, Mail, Eye, EyeOff, LogOut, ChevronLeft, ChevronRight, User, Bell, Settings, Lock } from 'lucide-react';
+import { CardEmailManager } from '../components/CardEmailManager';
+import { Plus, Zap, CreditCard, Mail, Eye, EyeOff, LogOut, ChevronLeft, ChevronRight, User, Bell, Settings, Lock, Network } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { auth } from '../../firebase/config';
 import { useNotification } from '../hooks/useNotification';
@@ -17,11 +18,10 @@ import { NotificationCenter } from '../components/NotificationCenter';
 import { SettingsModal, useSettings } from '../components/SettingsModal';
 import { PinGuard, usePin } from '../components/PinGuard';
 import { dbLocal } from '../lib/db';
-import { CategoryMenu } from '../components/CategoryMenu';
 import { motion, AnimatePresence } from 'motion/react';
 import { useFirestoreSync } from '../hooks/useFirestoreSync';
 
-type Tab = 'cards' | 'emails';
+type Tab = 'cards' | 'emails' | 'manager';
 
 export function Dashboard() {
   const { user, loading } = useAuth();
@@ -46,7 +46,6 @@ export function Dashboard() {
   const [showAddEmail, setShowAddEmail] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedSearch, setSelectedSearch] = useState<string | null>(null);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const profileRef = useRef<HTMLDivElement>(null);
   const { permission } = useNotification();
 
@@ -104,6 +103,7 @@ export function Dashboard() {
   const navItems: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'cards', label: 'Cards', icon: <CreditCard size={15} /> },
     { id: 'emails', label: 'Emails', icon: <Mail size={15} /> },
+    { id: 'manager', label: 'Liên kết', icon: <Network size={15} /> }
   ];
 
   return (
@@ -177,16 +177,6 @@ export function Dashboard() {
               </button>
             ))}
           </nav>
-
-          {/* Email Categories Menu */}
-          <div className="border-t border-gray-50 flex-1 overflow-y-auto">
-            <CategoryMenu
-              collapsed={collapsed}
-              selectedCategoryId={selectedCategoryId}
-              onSelectCategory={setSelectedCategoryId}
-              currentTab={tab}
-            />
-          </div>
         </div>
 
         {/* Lock App Button */}
@@ -321,19 +311,21 @@ export function Dashboard() {
 
         {/* Dynamic Table Content */}
         <div className="flex-1 flex flex-col min-h-0">
-          {tab === 'cards' ? (
+          {tab === 'manager' ? (
+            <div className="flex-1 bg-gray-50/50">
+              <CardEmailManager />
+            </div>
+          ) : tab === 'cards' ? (
             <CardsTable
               refreshKey={refreshKey}
               searchQuery={selectedSearch ?? undefined}
               onSearchChange={() => setSelectedSearch(null)}
-              selectedCategoryId={selectedCategoryId}
             />
           ) : (
             <EmailsTable
               refreshKey={refreshKey}
               searchQuery={selectedSearch ?? undefined}
               onSearchChange={() => setSelectedSearch(null)}
-              selectedCategoryId={selectedCategoryId}
             />
           )}
         </div>
@@ -341,7 +333,7 @@ export function Dashboard() {
 
       {/* Modals */}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
-      {showQuickAdd && <QuickAddModal mode={tab} onClose={() => setShowQuickAdd(false)} onImported={handleImported} />}
+      {showQuickAdd && <QuickAddModal mode={tab === 'emails' ? 'emails' : 'cards'} onClose={() => setShowQuickAdd(false)} onImported={handleImported} />}
       {showAddCard && <AddCardModal onClose={() => setShowAddCard(false)} onAdded={handleAdded} />}
       {showAddEmail && <AddEmailModal onClose={() => setShowAddEmail(false)} onAdded={handleAdded} />}
     </div>

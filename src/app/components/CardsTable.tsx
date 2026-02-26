@@ -34,8 +34,6 @@ import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAlarms } from '../hooks/useAlarms';
 import { AlarmRecord } from '../lib/db';
-import { LinkEmailModal } from './LinkEmailModal';
-import { Link2 } from 'lucide-react';
 
 export interface CardRecord {
   id: string;
@@ -54,6 +52,7 @@ export interface CardRecord {
   status?: string;
   note?: string;
   bookmarked?: boolean;
+  updatedAt?: number;
   linkedEmails?: string[]; // Arrays of linked Email IDs
 }
 
@@ -61,7 +60,6 @@ interface CardsTableProps {
   refreshKey?: number;
   searchQuery?: string;
   onSearchChange?: (val: string) => void;
-  selectedCategoryId?: string | null;
 }
 
 /** Format a single card for quick-copy: fields separated by | */
@@ -87,7 +85,7 @@ const TOAST_STYLE = {
   border: 'none',
 };
 
-export function CardsTable({ refreshKey, searchQuery, onSearchChange, selectedCategoryId }: CardsTableProps) {
+export function CardsTable({ refreshKey, searchQuery, onSearchChange }: CardsTableProps) {
   const { user } = useAuth();
   const { isVisible } = useVisibility();
   const [loading, setLoading] = useState(true);
@@ -140,7 +138,6 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange, selectedCa
   }, []);
 
   // Filter state
-  const [showLinkEmailModal, setShowLinkEmailModal] = useState(false);
   const [filters, setFilters] = useState({
     search: '',
     prefix: '',
@@ -189,8 +186,6 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange, selectedCa
     refresh
   } = useFirestoreSync<CardRecord>('cards', refreshKey);
 
-  const { data: emails } = useFirestoreSync<{ id: string; email: string }>('emails');
-
   // Set loading state
   useEffect(() => {
     if (!initialLoading) setLoading(false);
@@ -208,13 +203,6 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange, selectedCa
 
   // Filter logic
   const filteredCards = cards.filter((card) => {
-    // 1. Category Filter -> currently, the prompt says "A Category contains Emails. Cards link to Emails."
-    // If we select a generic Category, we typically filter Emails. But if we want Cards to filter by Category, 
-    // we'd need to know if any of the card's `linkedEmails` belong to `selectedCategoryId`.
-    // However, the prompt mainly focuses on Categories organizing Emails, and Cards linking to Emails.
-    // We will leave the category filter primarily for EmailsTable for now, but to avoid TS errors, we accept the prop.
-
-    // 2. Global Search
     const s = filters.search.toLowerCase();
     const matchesSearch = !s || card.id.toLowerCase() === s || [
       card.cardNumber,
@@ -225,7 +213,6 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange, selectedCa
       card.cvv
     ].some(v => v?.toLowerCase().includes(s));
 
-    // 3. Toolbar Filters
     const matchesPrefix = !filters.prefix || card.cardNumber.startsWith(filters.prefix);
     const matchesSuffix = !filters.suffix || card.cardNumber.endsWith(filters.suffix);
     const matchesExpiry = !filters.expiry || formatExpiry(card.expiryDate).includes(filters.expiry);
@@ -517,24 +504,6 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange, selectedCa
     }
   };
 
-  // ── Unlink Email from Card ──
-  const handleUnlinkEmail = async (e: React.MouseEvent, cardId: string, emailIdToRemove: string, currentLinks: string[]) => {
-    e.stopPropagation();
-    if (!user) return;
-    if (!confirm('Bạn có chắc chắn muốn gỡ thẻ khỏi Email này không?')) return;
-    const newLinks = currentLinks.filter(id => id !== emailIdToRemove);
-    try {
-      await updateDoc(doc(db, 'cards', cardId), { linkedEmails: newLinks, updatedAt: serverTimestamp() });
-      const existing = await dbLocal.cards.get(cardId);
-      if (existing) await dbLocal.cards.put({ ...existing, linkedEmails: newLinks, updatedAt: Date.now() });
-      toast.success('Đã gỡ liên kết');
-      refresh();
-    } catch (err: any) {
-      console.error('Failed to unlink email:', err);
-      toast.error('Lỗi khi gỡ liên kết');
-    }
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16 text-gray-400 text-[13px]">
@@ -681,19 +650,6 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange, selectedCa
         {batchCopied ? <Check size={13} /> : <ClipboardList size={13} />}
       </button>
 
-      {/* Link Emails */}
-      <button
-        onClick={() => setShowLinkEmailModal(true)}
-        disabled={selectedIds.size === 0}
-        title="Gán Email"
-        className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${selectedIds.size === 0
-          ? 'text-gray-200 cursor-default'
-          : 'text-gray-500 hover:bg-indigo-50 hover:text-indigo-600'
-          }`}
-      >
-        <Link2 size={13} />
-      </button>
-
       {/* Delete */}
       {showBatchConfirm ? (
         <div className="flex items-center gap-1">
@@ -748,14 +704,13 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange, selectedCa
             <table className="w-full min-w-[800px] table-fixed border-collapse">
               <colgroup>
                 <col style={{ width: '36px' }} />
-                <col className="w-[18%]" />
+                <col className="w-[22%]" />
+                <col className="w-[10%]" />
                 <col className="w-[8%]" />
-                <col className="w-[6%]" />
-                <col className="w-[8%]" />
-                <col style={{ width: '70px' }} />
-                <col className="w-[12%]" />
+                <col className="w-[9%]" />
+                <col style={{ width: '80px' }} />
                 <col className="w-[15%]" />
-                <col style={{ width: '90px' }} />
+                <col style={{ width: '110px' }} />
               </colgroup>
               <thead className="sticky top-0 bg-white z-10">
                 <tr className="border-b border-gray-100">
@@ -802,9 +757,6 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange, selectedCa
                   <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider no-sort">
                     Note
                   </th>
-                  <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider no-sort">
-                    Emails
-                  </th>
                   <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
                     Actions
                   </th>
@@ -818,23 +770,16 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange, selectedCa
                     const isCopied = copiedId === card.id;
                     const isEditing = editingId === card.id;
 
-                    // Orphaned card (Nền nâu) if no linked array or empty
-                    const isOrphaned = !card.linkedEmails || card.linkedEmails.length === 0;
-
-                    // Priority: copied (bright blue) > editing (amber) > selected (light blue) > orphaned (brown) > hovered > default
+                    // Priority: copied (bright blue) > editing (amber) > selected (light blue) > hovered > default
                     const rowBg = isCopied
                       ? 'bg-blue-100'
                       : isEditing
                         ? 'bg-amber-50'
                         : isSelected
                           ? 'bg-blue-50'
-                          : isOrphaned
-                            ? 'bg-[#5c4033]/10 hover:bg-[#5c4033]/20' // Soft brown for table row
-                            : isHovered
-                              ? 'bg-gray-50'
-                              : 'bg-white';
-
-                    const textClass = isOrphaned && !isSelected && !isCopied && !isEditing ? 'text-[#5c4033]' : '';
+                          : isHovered
+                            ? 'bg-gray-50'
+                            : 'bg-white';
 
                     return (
                       <motion.tr
@@ -965,33 +910,6 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange, selectedCa
                             value={card.note ?? ''}
                             onSave={(val) => updateField(card.id, 'note', val)}
                           />
-                        </td>
-
-                        {/* Emails Linked */}
-                        <td className="px-3 py-0">
-                          {isEditing ? (
-                            <span className="text-[11px] text-amber-600 block pt-3">Không thể sửa link ở chế độ này</span>
-                          ) : (
-                            <div className="flex flex-wrap gap-1 py-1.5 max-h-[80px] overflow-y-auto w-full no-scrollbar">
-                              {(card.linkedEmails || []).map(emailId => {
-                                return (
-                                  <span key={emailId} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${isCopied || isSelected ? 'bg-white/40 text-blue-900' : isOrphaned ? 'bg-[#5c4033]/20 text-[#5c4033]' : 'bg-gray-100 text-gray-700'}`}>
-                                    <span className="truncate max-w-[80px]" title={emailId}>{emailId.substring(0, 8)}...</span>
-                                    <button
-                                      onClick={(e) => handleUnlinkEmail(e, card.id, emailId, card.linkedEmails || [])}
-                                      className="opacity-50 hover:opacity-100 hover:text-red-500"
-                                      title="Gỡ liên kết"
-                                    >
-                                      <X size={10} />
-                                    </button>
-                                  </span>
-                                );
-                              })}
-                              {(!card.linkedEmails || card.linkedEmails.length === 0) && (
-                                <span className={`text-[10px] italic ${textClass || 'text-gray-400'}`}>Trống</span>
-                              )}
-                            </div>
-                          )}
                         </td>
 
                         {/* Actions column */}
