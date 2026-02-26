@@ -669,6 +669,9 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange }: EmailsT
     const totpCode = totpCodes[rec.id] || '';
     const isEditing = editingId === rec.id;
 
+    const isLiveValid = rec.liveStatus?.toLowerCase() === 'valid id' || rec.liveStatus?.toLowerCase() === 'valid' || rec.liveStatus?.toLowerCase().includes('catch-all') || rec.liveStatus?.toLowerCase() === 'ok';
+    const isLiveInvalid = rec.liveStatus && !isLiveValid;
+
     const rowBg = isCopied
       ? 'bg-blue-100'
       : isEditing
@@ -677,7 +680,9 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange }: EmailsT
           ? 'bg-blue-50'
           : isHovered
             ? 'bg-gray-50'
-            : 'bg-white';
+            : isLiveInvalid
+              ? 'bg-red-50/50' // Light red background for invalid emails
+              : 'bg-white';
 
     return (
       <motion.tr
@@ -796,9 +801,9 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange }: EmailsT
         {/* Live Status */}
         <td className="px-3 py-0 whitespace-nowrap">
           {rec.liveStatus ? (
-            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium leading-none ${rec.liveStatus.toLowerCase().includes('valid') || rec.liveStatus.toLowerCase().includes('catch-all') || rec.liveStatus.toLowerCase().includes('ok')
-              ? 'bg-green-100/80 text-green-700 border border-green-200/50'
-              : 'bg-red-50 text-red-600 border border-red-100'
+            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium leading-none ${isLiveValid
+                ? 'bg-green-100/80 text-green-700 border border-green-200/50'
+                : 'bg-red-100/80 text-red-700 border border-red-200/50'
               }`}>
               {rec.liveStatus}
             </span>
