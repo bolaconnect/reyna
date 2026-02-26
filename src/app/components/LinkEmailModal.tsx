@@ -1,228 +1,273 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Search, Link as LinkIcon, Check, Folder } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
-import { doc, writeBatch, serverTimestamp } from 'firebase/firestore';
+import { X, Search, Check, Mail, Plus, Folder, ChevronDown } from 'lucide-react';
+import { collection, doc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase/config';
-import { dbLocal } from '../lib/db';
 import { useFirestoreSync } from '../hooks/useFirestoreSync';
+import { EmailRecord } from './EmailsTable';
+import { dbLocal, EmailCategoryRecord } from '../lib/db';
+import { useAuth } from '../../contexts/AuthContext';
+import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
 
 interface LinkEmailModalProps {
     isOpen: boolean;
     onClose: () => void;
-    selectedCardIds: string[];
-    onLinked: () => void;
+    onSave: (selectedEmailIds: string[], targetCategoryId: string) => void;
+    cardCount: number;
 }
 
-export function LinkEmailModal({ isOpen, onClose, selectedCardIds, onLinked }: LinkEmailModalProps) {
+export function LinkEmailModal({ isOpen, onClose, onSave, cardCount }: LinkEmailModalProps) {
     const { user } = useAuth();
+    const { data: emails } = useFirestoreSync<EmailRecord>('emails');
+    const { data: categories, refresh: refreshCategories } = useFirestoreSync<EmailCategoryRecord>('categories');
+
     const [search, setSearch] = useState('');
-    const [selectedEmailIds, setSelectedEmailIds] = useState<Set<string>>(new Set());
-    const [saving, setSaving] = useState(false);
+    const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
+    const [targetCategoryId, setTargetCategoryId] = useState<string>(''); // '' = not selected, '<id>' = category
 
-    const { data: emails } = useFirestoreSync<{ id: string; email: string; categoryId?: string }>('emails');
-    const { data: categories } = useFirestoreSync<{ id: string; name: string }>('categories');
-    const { data: cards } = useFirestoreSync<{ id: string; linkedEmails?: string[] }>('cards');
+    const [isCreatingNewCat, setIsCreatingNewCat] = useState(false);
+    const [newCatName, setNewCatName] = useState('');
+    const [isSavingCat, setIsSavingCat] = useState(false);
 
-    // Pre-fill selection if only 1 card is selected (optional, but good UX: if 1 card selected, show its current links)
+    const newCatInputRef = useRef<HTMLInputElement>(null);
+
     useEffect(() => {
-        if (isOpen && selectedCardIds.length === 1) {
-            const card = cards.find(c => c.id === selectedCardIds[0]);
-            if (card && card.linkedEmails) {
-                setSelectedEmailIds(new Set(card.linkedEmails));
-            } else {
-                setSelectedEmailIds(new Set());
-            }
-        } else if (isOpen && selectedCardIds.length > 1) {
-            // If multiple cards, maybe start blank or intersection. Starting blank is safer.
-            setSelectedEmailIds(new Set());
+        if (isCreatingNewCat && newCatInputRef.current) {
+            newCatInputRef.current.focus();
         }
+    }, [isCreatingNewCat]);
+
+    const handleToggleEmail = (id: string) => {
+        setSelectedEmailId(prev => prev === id ? null : id);
+    };
+
+    const handleCreateCategory = async (e: React.FormEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!user || !newCatName.trim() || isSavingCat) return;
+
+        setIsSavingCat(true);
+        const id = uuidv4();
+        const timestamp = Date.now();
+        const record = {
+            id,
+            userId: user.uid,
+            name: newCatName.trim(),
+            createdAt: timestamp,
+            updatedAt: timestamp
+        };
+
+        try {
+            await dbLocal.categories.put(record);
+            const batch = writeBatch(db);
+            batch.set(doc(db, 'categories', id), record);
+            await batch.commit();
+
+            await refreshCategories();
+            setTargetCategoryId(id);
+            setNewCatName('');
+            setIsCreatingNewCat(false);
+            toast.success('Đã tạo danh mục: ' + record.name);
+        } catch (err) {
+            console.error('Add category error', err);
+            toast.error('Lỗi khi tạo danh mục mới');
+        } finally {
+            setIsSavingCat(false);
+        }
+    };
+
+    const handleSave = () => {
+        if (!selectedEmailId || !targetCategoryId) return;
+        onSave([selectedEmailId], targetCategoryId);
+        // Reset state
+        setSelectedEmailId(null);
+        setTargetCategoryId('');
         setSearch('');
-    }, [isOpen, selectedCardIds, cards]);
+    };
 
     const filteredEmails = useMemo(() => {
-        const q = search.toLowerCase();
-        return emails.filter(e => !q || e.email.toLowerCase().includes(q));
+        const lowerSearch = search.toLowerCase();
+        return emails.filter(e =>
+            !lowerSearch ||
+            e.email.toLowerCase().includes(lowerSearch) ||
+            e.note?.toLowerCase().includes(lowerSearch)
+        );
     }, [emails, search]);
-
-    // Group emails by category
-    const groupedEmails = useMemo(() => {
-        const groups: Record<string, typeof emails> = { 'Chưa phân loại': [] };
-        categories.forEach(c => {
-            groups[c.id] = [];
-        });
-
-        filteredEmails.forEach(e => {
-            if (e.categoryId && groups[e.categoryId]) {
-                groups[e.categoryId].push(e);
-            } else {
-                groups['Chưa phân loại'].push(e);
-            }
-        });
-
-        return groups;
-    }, [filteredEmails, categories]);
-
-    const toggleEmail = (id: string) => {
-        setSelectedEmailIds(prev => {
-            const next = new Set(prev);
-            if (next.has(id)) next.delete(id);
-            else next.add(id);
-            return next;
-        });
-    };
-
-    const handleSave = async () => {
-        if (!user || selectedCardIds.length === 0) return;
-        setSaving(true);
-        try {
-            const batch = writeBatch(db);
-            const now = Date.now();
-            const emailArray = Array.from(selectedEmailIds);
-
-            // Update all selected cards
-            await Promise.all(selectedCardIds.map(async (cardId) => {
-                // Determine new linkedEmails array
-                // If 1 card, replace exactly.
-                // If multiple cards, we APPEND or REPLACE? Usually "Assign Emails" means replace existing or merge. 
-                // Let's replace completely to be predictable.
-                const newLinked = emailArray;
-
-                // Firestore
-                batch.update(doc(db, 'cards', cardId), {
-                    linkedEmails: newLinked,
-                    updatedAt: serverTimestamp()
-                });
-
-                // Dexie
-                const existing = await dbLocal.cards.get(cardId);
-                if (existing) {
-                    await dbLocal.cards.put({ ...existing, linkedEmails: newLinked, updatedAt: now });
-                }
-            }));
-
-            await batch.commit();
-            toast.success(`Đã cập nhật ${selectedCardIds.length} thẻ`);
-            onLinked();
-            onClose();
-        } catch (err: any) {
-            console.error('Failed to link emails:', err);
-            toast.error('Lỗi khi lưu liên kết');
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    const getCategoryName = (catId: string) => {
-        if (catId === 'Chưa phân loại') return catId;
-        const c = categories.find(x => x.id === catId);
-        return c ? c.name : 'Unknown';
-    };
 
     if (!isOpen) return null;
 
     return (
         <AnimatePresence>
-            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
                 <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-                    onClick={onClose}
-                />
-                <motion.div
-                    initial={{ scale: 0.95, opacity: 0, y: 10 }}
-                    animate={{ scale: 1, opacity: 1, y: 0 }}
-                    exit={{ scale: 0.95, opacity: 0, y: 10 }}
-                    className="relative w-full max-w-md bg-white rounded-2xl shadow-xl border border-gray-100 flex flex-col max-h-[85vh] overflow-hidden"
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]"
                 >
                     {/* Header */}
-                    <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-gray-50/50">
-                        <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
-                                <LinkIcon size={16} />
-                            </div>
-                            <div>
-                                <h3 className="text-sm font-bold text-gray-900">Liên kết Thẻ - Email</h3>
-                                <p className="text-[11px] text-gray-500 font-medium">Chọn email để gán vào {selectedCardIds.length} thẻ đang chọn</p>
-                            </div>
+                    <div className="flex items-center justify-between p-4 border-b border-gray-100 bg-gray-50/50">
+                        <div>
+                            <h3 className="text-[17px] font-bold text-gray-900 flex items-center gap-2">
+                                <Mail size={20} className="text-blue-600" />
+                                Liên kết Email & Phân loại
+                            </h3>
+                            <p className="text-[12px] text-gray-500 mt-0.5">Đang liên kết vào {cardCount} thẻ đã chọn</p>
                         </div>
-                        <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors">
-                            <X size={18} />
+                        <button onClick={onClose} className="p-2 text-gray-400 hover:bg-gray-200 rounded-full transition-colors">
+                            <X size={20} />
                         </button>
                     </div>
 
-                    {/* Search */}
-                    <div className="p-4 border-b border-gray-50">
-                        <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                            <input
-                                type="text"
-                                placeholder="Tìm email..."
-                                value={search}
-                                onChange={e => setSearch(e.target.value)}
-                                className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-[13px] text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium"
-                            />
-                        </div>
-                    </div>
+                    <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-5">
+                        {/* Section 1: Category */}
+                        <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                                <label className="text-[13px] font-bold text-gray-700 flex items-center gap-2">
+                                    <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[11px]">1</div>
+                                    Chọn danh mục cho Email
+                                </label>
+                                {!isCreatingNewCat && (
+                                    <button
+                                        onClick={() => setIsCreatingNewCat(true)}
+                                        className="text-[12px] text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1 px-2 py-1 rounded-md hover:bg-blue-50 transition-colors"
+                                    >
+                                        <Plus size={14} /> Tạo danh mục mới
+                                    </button>
+                                )}
+                            </div>
 
-                    {/* List */}
-                    <div className="flex-1 overflow-y-auto p-2">
-                        {Object.entries(groupedEmails).map(([catId, emailsInCat]) => {
-                            if (emailsInCat.length === 0) return null;
-                            return (
-                                <div key={catId} className="mb-4">
-                                    <h4 className="flex items-center gap-1.5 px-2 py-1.5 text-[11px] font-bold text-gray-500 uppercase tracking-wider sticky top-0 bg-white/90 backdrop-blur-sm z-10">
-                                        <Folder size={12} className="text-indigo-400" />
-                                        {getCategoryName(catId)}
-                                    </h4>
-                                    <div className="space-y-0.5 mt-1">
-                                        {emailsInCat.sort((a, b) => a.email.localeCompare(b.email)).map(email => {
-                                            const isSelected = selectedEmailIds.has(email.id);
+                            {!isCreatingNewCat ? (
+                                <div className="relative group">
+                                    <select
+                                        value={targetCategoryId}
+                                        onChange={(e) => setTargetCategoryId(e.target.value)}
+                                        className="w-full appearance-none pl-3 pr-10 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all cursor-pointer"
+                                    >
+                                        <option value="">-- Bắt buộc chọn danh mục --</option>
+                                        {categories.map(cat => (
+                                            <option key={cat.id} value={cat.id}>{cat.name}</option>
+                                        ))}
+                                    </select>
+                                    <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none group-hover:text-gray-600 transition-colors" />
+                                </div>
+                            ) : (
+                                <motion.form
+                                    initial={{ opacity: 0, y: -10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    onSubmit={handleCreateCategory}
+                                    className="flex gap-2 p-3 bg-blue-50/50 rounded-xl border border-blue-100"
+                                >
+                                    <input
+                                        ref={newCatInputRef}
+                                        type="text"
+                                        value={newCatName}
+                                        onChange={e => setNewCatName(e.target.value)}
+                                        placeholder="Tên danh mục mới..."
+                                        className="flex-1 px-3 py-2 bg-white border border-blue-200 rounded-lg text-[13px] focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
+                                    />
+                                    <button
+                                        type="submit"
+                                        disabled={!newCatName.trim() || isSavingCat}
+                                        className="px-4 py-2 bg-blue-600 text-white rounded-lg text-[13px] font-bold hover:bg-blue-700 disabled:opacity-50 shadow-sm transition-all"
+                                    >
+                                        {isSavingCat ? '...' : 'Lưu'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsCreatingNewCat(false)}
+                                        className="px-3 py-2 text-gray-500 hover:bg-gray-200 rounded-lg transition-colors text-[13px]"
+                                    >
+                                        Hủy
+                                    </button>
+                                </motion.form>
+                            )}
+                        </div>
+
+                        <div className="h-px bg-gray-100" />
+
+                        {/* Section 2: Email Selection */}
+                        <div className="space-y-3 flex flex-col flex-1 min-h-0">
+                            <label className="text-[13px] font-bold text-gray-700 flex items-center gap-2">
+                                <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[11px]">2</div>
+                                Chọn Email để liên kết
+                            </label>
+
+                            <div className="relative">
+                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                <input
+                                    type="text"
+                                    placeholder="Tìm tài khoản email, ghi chú..."
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                    className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-[13px] focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all"
+                                />
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto border border-gray-100 rounded-xl bg-gray-50/30">
+                                {filteredEmails.length > 0 ? (
+                                    <div className="divide-y divide-gray-50 p-1">
+                                        {filteredEmails.map(e => {
+                                            const checked = selectedEmailId === e.id;
+                                            const catName = categories.find(c => c.id === e.categoryId)?.name || 'Chưa phân loại';
                                             return (
-                                                <button
-                                                    key={email.id}
-                                                    onClick={() => toggleEmail(email.id)}
-                                                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all ${isSelected ? 'bg-indigo-50 border border-indigo-100' : 'bg-transparent border border-transparent hover:bg-gray-50'}`}
+                                                <div
+                                                    key={e.id}
+                                                    onClick={() => handleToggleEmail(e.id)}
+                                                    className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-white hover:shadow-sm cursor-pointer transition-all border border-transparent hover:border-gray-100"
                                                 >
-                                                    <span className={`text-[13px] font-medium truncate ${isSelected ? 'text-indigo-900' : 'text-gray-700'}`}>
-                                                        {email.email}
-                                                    </span>
-                                                    <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${isSelected ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-gray-300'}`}>
-                                                        {isSelected && <Check size={12} strokeWidth={3} />}
+                                                    <div className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-blue-600 border-blue-600 shadow-sm' : 'border-gray-300 bg-white'}`}>
+                                                        {checked && <Check size={14} className="text-white" />}
                                                     </div>
-                                                </button>
-                                            )
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="text-[13px] font-semibold text-gray-900 truncate">{e.email}</div>
+                                                            <div className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded flex items-center gap-1">
+                                                                <Folder size={10} /> {catName}
+                                                            </div>
+                                                        </div>
+                                                        {e.note && <div className="text-[11px] text-gray-400 truncate mt-0.5">{e.note}</div>}
+                                                    </div>
+                                                </div>
+                                            );
                                         })}
                                     </div>
-                                </div>
-                            )
-                        })}
-                        {filteredEmails.length === 0 && (
-                            <div className="flex flex-col items-center justify-center py-10 text-gray-400">
-                                <Search size={24} className="mb-2 opacity-20" />
-                                <p className="text-[13px] font-medium">Không tìm thấy email nào</p>
+                                ) : (
+                                    <div className="py-12 flex flex-col items-center justify-center text-gray-400 gap-3">
+                                        <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
+                                            <Mail size={24} className="opacity-20" />
+                                        </div>
+                                        <p className="text-[13px]">Không tìm thấy email nào phù hợp</p>
+                                    </div>
+                                )}
                             </div>
-                        )}
+                        </div>
                     </div>
 
                     {/* Footer */}
-                    <div className="p-4 border-t border-gray-100 bg-white flex justify-end gap-3 shrink-0">
-                        <button
-                            onClick={onClose}
-                            className="px-5 py-2 text-[13px] font-semibold text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors"
-                        >
-                            Hủy bỏ
-                        </button>
-                        <button
-                            onClick={handleSave}
-                            disabled={saving}
-                            className="flex justify-center items-center px-5 py-2 text-[13px] font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all disabled:opacity-70 disabled:pointer-events-none"
-                        >
-                            {saving ? 'Đang lưu...' : `Cập nhật (${selectedEmailIds.size} email)`}
-                        </button>
+                    <div className="p-4 border-t border-gray-100 flex items-center justify-between bg-gray-50/50">
+                        <div className="text-[12px] text-gray-500">
+                            {selectedEmailId ? 'Đã chọn 1 email' : 'Chưa chọn email'}
+                        </div>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={onClose}
+                                className="px-5 py-2 text-[13px] font-semibold text-gray-600 hover:bg-gray-200 bg-white border border-gray-200 rounded-xl transition-all shadow-sm"
+                            >
+                                Đóng
+                            </button>
+                            <button
+                                onClick={handleSave}
+                                disabled={!selectedEmailId || !targetCategoryId}
+                                className={`px-6 py-2 text-[13px] font-bold text-white rounded-xl transition-all flex items-center gap-2 shadow-md ${(!selectedEmailId || !targetCategoryId)
+                                    ? 'bg-blue-300 cursor-not-allowed shadow-none'
+                                    : 'bg-blue-600 hover:bg-blue-700 active:scale-95'
+                                    }`}
+                            >
+                                <Check size={18} /> Lưu liên kết
+                            </button>
+                        </div>
                     </div>
                 </motion.div>
             </div>

@@ -5,7 +5,6 @@ import { X, Mail, Edit2, Check, Copy, Shield } from 'lucide-react';
 import { EmailRecord } from './EmailsTable';
 import { copyToClipboard } from '../../utils/copy';
 import { toast } from 'sonner';
-import { useFirestoreSync } from '../hooks/useFirestoreSync';
 
 interface Props {
   record: EmailRecord;
@@ -87,10 +86,6 @@ export function EmailDetailModal({ record, totpCode, onClose, onUpdated }: Props
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ ...record });
   const [saving, setSaving] = useState(false);
-
-  // Fetch cards to find the ones linked to this email
-  const { data: cards } = useFirestoreSync<{ id: string; cardNumber: string; linkedEmails?: string[] }>('cards');
-  const linkedCards = cards.filter(c => c.linkedEmails?.includes(record.id));
 
   // Sync form when record prop refreshes (Firestore listener) and not in edit mode
   useEffect(() => {
@@ -308,26 +303,6 @@ export function EmailDetailModal({ record, totpCode, onClose, onUpdated }: Props
               />
             )}
           </div>
-
-          {/* Linked Cards List */}
-          {!editing && (
-            <div className="border-t border-gray-100 pt-4">
-              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                Đang liên kết với các Thẻ ({linkedCards.length})
-              </p>
-              {linkedCards.length === 0 ? (
-                <p className="text-[12px] text-gray-300 italic">Chưa có thẻ nào</p>
-              ) : (
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {linkedCards.map(c => (
-                    <span key={c.id} className="inline-flex items-center px-2 py-1 rounded bg-indigo-50 border border-indigo-100 text-indigo-700 text-[11px] font-mono tracking-wider font-semibold">
-                      {c.cardNumber.slice(-4) || 'Unknown'}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
         </div>
       </div>
     </div>

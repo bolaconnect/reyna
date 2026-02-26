@@ -7,6 +7,7 @@ interface AlarmCellProps {
     now: number; // Current shared timestamp
     onDone: (alarmId: string) => Promise<void>;
     onClick: () => void;
+    tick?: number;
 }
 
 function formatRemaining(ms: number): { text: string; urgent: boolean; overdue: boolean } {

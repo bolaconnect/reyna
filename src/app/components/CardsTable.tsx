@@ -21,19 +21,22 @@ import { copyToClipboard } from '../../utils/copy';
 import { CopyCell } from './CopyCell';
 import {
   Search, Filter, Plus, Edit2, Trash2, X, Check, Copy, MoreHorizontal,
-  ChevronLeft, ChevronRight, Bookmark, Clock, ClipboardList, FilterX, Bell, Info, AlarmClock
+  ChevronLeft, ChevronRight, Bookmark, Clock, ClipboardList, FilterX, Bell, Info, AlarmClock, Mail
 } from 'lucide-react';
 import { CardDetailModal } from './CardDetailModal';
 import { StatusSelect } from './StatusSelect';
 import { NoteInput } from './NoteInput';
 import { PrefixInput } from './PrefixInput';
 import { Pagination } from './Pagination';
+import { PayInput } from './PayInput';
 import { TimerModal } from './TimerModal';
 import { AlarmCell } from './AlarmCell';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAlarms } from '../hooks/useAlarms';
 import { AlarmRecord } from '../lib/db';
+import { LinkEmailModal } from './LinkEmailModal';
+import { EmailRecord } from './EmailsTable';
 
 export interface CardRecord {
   id: string;
@@ -52,8 +55,8 @@ export interface CardRecord {
   status?: string;
   note?: string;
   bookmarked?: boolean;
-  updatedAt?: number;
-  linkedEmails?: string[]; // Arrays of linked Email IDs
+  linkedEmails?: string[];
+  payAmount?: number;
 }
 
 interface CardsTableProps {
@@ -112,6 +115,7 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange }: CardsTab
   const [timerCardId, setTimerCardId] = useState<string | null>(null);
   const [timerAlarms, setTimerAlarms] = useState<AlarmRecord[]>([]);
   const [alarmRefreshTick, setAlarmRefreshTick] = useState(0);
+  const [showLinkModal, setShowLinkModal] = useState(false);
   const [now, setNow] = useState(Date.now());
   const { addAlarm, deleteAlarm, getAlarmsForRecord, markAsDone, nearestAlarmsMap } = useAlarms({ userId: user?.uid });
 
@@ -185,6 +189,8 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange }: CardsTab
     syncing,
     refresh
   } = useFirestoreSync<CardRecord>('cards', refreshKey);
+
+  const { data: allEmails } = useFirestoreSync<EmailRecord>('emails');
 
   // Set loading state
   useEffect(() => {
@@ -635,6 +641,19 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange }: CardsTab
 
       <div className="w-px h-4 bg-gray-200 mx-1" />
 
+      {/* Link Email Modal Button */}
+      <button
+        onClick={() => { if (selectedIds.size > 0) setShowLinkModal(true); }}
+        disabled={selectedIds.size === 0}
+        title="Liên kết Email"
+        className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${selectedIds.size === 0
+          ? 'text-gray-200 cursor-default'
+          : 'text-gray-500 hover:bg-blue-50 hover:text-blue-500'
+          }`}
+      >
+        <Mail size={13} />
+      </button>
+
       {/* Copy */}
       <button
         onClick={handleBatchCopy}
@@ -704,12 +723,13 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange }: CardsTab
             <table className="w-full min-w-[800px] table-fixed border-collapse">
               <colgroup>
                 <col style={{ width: '36px' }} />
-                <col className="w-[22%]" />
-                <col className="w-[10%]" />
+                <col className="w-[17%]" />
                 <col className="w-[8%]" />
-                <col className="w-[9%]" />
+                <col className="w-[6%]" />
+                <col className="w-[8%]" />
+                <col style={{ width: '100px' }} />
                 <col style={{ width: '80px' }} />
-                <col className="w-[15%]" />
+                <col className="w-[31%]" />
                 <col style={{ width: '110px' }} />
               </colgroup>
               <thead className="sticky top-0 bg-white z-10">
@@ -728,6 +748,7 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange }: CardsTab
                     { col: 'expiry' as const, label: 'Expiry', cls: 'px-4' },
                     { col: 'cvv' as const, label: 'CVV', cls: 'px-4' },
                     { col: 'status' as const, label: 'Status', cls: 'px-3' },
+                    { col: 'payAmount' as const, label: 'Pay', cls: 'px-3 text-center' },
                   ]).map(({ col, label, cls }) => (
                     <th
                       key={col}
@@ -770,16 +791,22 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange }: CardsTab
                     const isCopied = copiedId === card.id;
                     const isEditing = editingId === card.id;
 
-                    // Priority: copied (bright blue) > editing (amber) > selected (light blue) > hovered > default
-                    const rowBg = isCopied
-                      ? 'bg-blue-100'
-                      : isEditing
-                        ? 'bg-amber-50'
-                        : isSelected
-                          ? 'bg-blue-50'
-                          : isHovered
-                            ? 'bg-gray-50'
-                            : 'bg-white';
+                    const isOrphaned = card.linkedEmails !== undefined && card.linkedEmails.length === 0;
+
+                    // Priority: orphaned > copied (bright blue) > editing (amber) > selected (light blue) > hovered > default
+                    const rowBg = isOrphaned
+                      ? 'bg-[#Ece7e5]' // Light brownish color for orphaned cards
+                      : isCopied
+                        ? 'bg-blue-100'
+                        : isEditing
+                          ? 'bg-amber-50'
+                          : isSelected
+                            ? 'bg-blue-50'
+                            : isHovered
+                              ? 'bg-gray-50'
+                              : 'bg-white';
+
+                    const textColor = isOrphaned && !isCopied && !isEditing && !isSelected && !isHovered ? 'text-amber-900/60' : 'text-gray-800';
 
                     return (
                       <motion.tr
@@ -893,7 +920,18 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange }: CardsTab
                           />
                         </td>
 
-                        {/* Timer cell — between Status and Note */}
+                        {/* Pay */}
+                        <td className="px-3 py-0 align-middle">
+                          <PayInput
+                            value={card.payAmount}
+                            onChange={async (val) => {
+                              try { await updateDoc(doc(db, 'cards', card.id), { payAmount: val }); }
+                              catch { toast.error('Lỗi khi cập nhật Pay'); }
+                            }}
+                          />
+                        </td>
+
+                        {/* Timer cell — between Pay and Note */}
                         <td className="py-0" onClick={e => e.stopPropagation()}>
                           <AlarmCell
                             recordId={card.id}
@@ -1045,6 +1083,68 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange }: CardsTab
           />
         );
       })()}
+      {showLinkModal && (
+        <LinkEmailModal
+          isOpen={showLinkModal}
+          onClose={() => setShowLinkModal(false)}
+          cardCount={selectedIds.size}
+          onSave={async (selectedEmailIds, targetCategoryId) => {
+            const batch = writeBatch(db);
+            const ts = Date.now();
+
+            // 1. Update Cards
+            const cardsToUpdate = cards.filter(c => selectedIds.has(c.id));
+
+            for (const card of cardsToUpdate) {
+              // Merge existing with new (no duplicates)
+              const existing = new Set(card.linkedEmails || []);
+              selectedEmailIds.forEach(id => existing.add(id));
+              const nextLinked = Array.from(existing);
+
+              // Update firestore via batch
+              batch.update(doc(db, 'cards', card.id), {
+                linkedEmails: nextLinked,
+                updatedAt: serverTimestamp()
+              });
+
+              // Optimistic local update
+              await dbLocal.cards.update(card.id, {
+                linkedEmails: nextLinked,
+                updatedAt: ts
+              });
+            }
+
+            // 2. Update category for selected emails if requested
+            if (targetCategoryId !== '') {
+              const catIdToSet = targetCategoryId === 'none' ? '' : targetCategoryId;
+              const emailsToUpdate = allEmails.filter(e => selectedEmailIds.includes(e.id));
+
+              for (const email of emailsToUpdate) {
+                batch.update(doc(db, 'emails', email.id), {
+                  categoryId: catIdToSet,
+                  updatedAt: serverTimestamp()
+                });
+
+                await dbLocal.emails.update(email.id, {
+                  categoryId: catIdToSet,
+                  updatedAt: ts
+                });
+              }
+            }
+
+            try {
+              await batch.commit();
+              refresh();
+              setShowLinkModal(false);
+              setSelectedIds(new Set());
+              toast.success(`Đã cập nhật ${selectedEmailIds.length} email và liên kết vào ${cardsToUpdate.length} thẻ`);
+            } catch (err) {
+              console.error('Lỗi khi Link Email hàng loạt', err);
+              toast.error('Có lỗi xảy ra khi lưu liên kết');
+            }
+          }}
+        />
+      )}
     </>
   );
 }

@@ -10,35 +10,51 @@ import { dbLocal } from '../lib/db';
 import { SyncService, SyncableCollection } from '../services/syncService';
 import { useAuth } from '../../contexts/AuthContext';
 import { db as firestoreDb } from '../../firebase/config';
+import { useLiveQuery } from 'dexie-react-hooks';
+
+const EMPTY_ARRAY: any[] = [];
 
 export function useFirestoreSync<T>(
     collectionName: SyncableCollection,
     refreshKey?: number
 ) {
     const { user } = useAuth();
-    const [data, setData] = useState<T[]>([]);
     const [loading, setLoading] = useState(true);
     const [syncing, setSyncing] = useState(false);
     const [readyToListen, setReadyToListen] = useState(false);
 
-    // Load from local Dexie — excluding soft-deleted records
-    const loadLocal = useCallback(async () => {
-        if (!user) return;
+    // Load from local Dexie — reactive!
+    const data = useLiveQuery(async () => {
+        if (!user) return EMPTY_ARRAY as T[];
         const table = (SyncService as any).getTable ? (SyncService as any).getTable(collectionName) : (dbLocal as any)[collectionName];
         const items = await table.where('userId').equals(user.uid).toArray();
 
-        // Filter out soft-deleted & sort by updatedAt desc
-        const sorted = (items as any[])
+        // Filter out soft-deleted & STABLE SORT
+        return (items as any[])
             .filter(item => !item.deleted)
-            .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-        setData(sorted as T[]);
-        setLoading(false);
-    }, [user, collectionName]);
+            .sort((a, b) => {
+                // Secondary sorting criteria for stability: 
+                // 1. updatedAt desc
+                // 2. name/title asc (if available)
+                // 3. id asc
+                const timeA = a.updatedAt || 0;
+                const timeB = b.updatedAt || 0;
+                if (timeB !== timeA) return timeB - timeA;
 
-    // Initial load from local
+                const nameA = (a.name || a.title || '').toLowerCase();
+                const nameB = (b.name || b.title || '').toLowerCase();
+                if (nameA !== nameB) return nameA.localeCompare(nameB);
+
+                return a.id.localeCompare(b.id);
+            }) as T[];
+    }, [user, collectionName, refreshKey]) || (EMPTY_ARRAY as T[]);
+
+    // Trigger loading state updates
     useEffect(() => {
-        loadLocal();
-    }, [loadLocal, refreshKey]);
+        if (data !== EMPTY_ARRAY) {
+            setLoading(false);
+        }
+    }, [data]);
 
     // Sync with Firestore (Delta/Initial Catch-up)
     const sync = useCallback(async () => {
@@ -47,21 +63,19 @@ export function useFirestoreSync<T>(
         try {
             await SyncService.syncCollection(collectionName, user.uid);
             setReadyToListen(true);
-            // After sync, reload local data
-            await loadLocal();
         } catch (err) {
             console.error(`Sync error for ${collectionName}:`, err);
         } finally {
             setSyncing(false);
         }
-    }, [user, collectionName, syncing, loadLocal]);
+    }, [user, collectionName, syncing]);
 
     // Trigger manual sync on mount and when user/refreshKey changes
     useEffect(() => {
         if (user) {
             sync();
         }
-    }, [user, collectionName, refreshKey]);
+    }, [user, collectionName, refreshKey, sync]);
 
     // Real-time delta listener
     useEffect(() => {
@@ -71,13 +85,22 @@ export function useFirestoreSync<T>(
 
         const startListener = async () => {
             const meta = await dbLocal.syncMeta.get({ userId: user.uid, collectionName });
-            const lastSyncTime = meta?.lastSyncTime || Date.now();
+            const lastSyncTime = meta?.lastSyncTime || 0;
 
-            const q = query(
-                collection(firestoreDb, collectionName),
-                where('userId', '==', user.uid),
-                where('updatedAt', '>', Timestamp.fromMillis(lastSyncTime))
-            );
+            // For 'categories', we skip the updatedAt filter to avoid requiring a composite index
+            // Since category lists are small, fetching all for the user is efficient enough.
+            const useDelta = collectionName !== 'categories';
+
+            const q = useDelta
+                ? query(
+                    collection(firestoreDb, collectionName),
+                    where('userId', '==', user.uid),
+                    where('updatedAt', '>', Timestamp.fromMillis(lastSyncTime))
+                )
+                : query(
+                    collection(firestoreDb, collectionName),
+                    where('userId', '==', user.uid)
+                );
 
             try {
                 unsub = onSnapshot(q, async (snapshot) => {
@@ -87,32 +110,39 @@ export function useFirestoreSync<T>(
                     const updates: any[] = [];
                     const toDelete: string[] = [];
 
-                    snapshot.docs.forEach(docSnap => {
+                    for (const docSnap of snapshot.docs) {
                         const d = docSnap.data();
+                        const recordId = docSnap.id;
+
+                        // Check if we already have this record with same or newer sequence
+                        // to avoid jitter from redundant writes
+                        const existing = await table.get(recordId);
+                        const serverUpdatedAt = d.updatedAt instanceof Timestamp ? d.updatedAt.toMillis() : (d.updatedAt || 0);
+
+                        // Skip if local is already newer or identical
+                        if (existing && existing.updatedAt >= serverUpdatedAt && !d.deleted) continue;
+
                         const record = {
-                            id: docSnap.id,
+                            id: recordId,
                             ...d,
-                            updatedAt: d.updatedAt instanceof Timestamp ? d.updatedAt.toMillis() : Date.now(),
+                            updatedAt: serverUpdatedAt,
                         };
                         if (d.deleted) {
-                            toDelete.push(docSnap.id);
+                            toDelete.push(recordId);
                         } else {
                             updates.push(record);
                         }
-                    });
+                    }
 
                     // Save updated docs & remove deleted ones from local cache
                     if (updates.length > 0) await table.bulkPut(updates);
                     if (toDelete.length > 0) await table.bulkDelete(toDelete);
 
-                    // Update lastSyncTime if there were any updates
-                    if (updates.length > 0) {
+                    // Update lastSyncTime if there were any updates and we are using delta
+                    if (updates.length > 0 && useDelta) {
                         const latest = Math.max(...updates.map(u => u.updatedAt));
                         await dbLocal.syncMeta.put({ userId: user.uid, collectionName, lastSyncTime: latest });
                     }
-
-                    // Refresh local UI
-                    loadLocal();
                 }, (err: any) => {
                     const isIndexError = err?.code === 'failed-precondition' ||
                         (err?.message && (err.message.includes('index') || err.message.includes('Index')));
@@ -132,13 +162,13 @@ export function useFirestoreSync<T>(
         return () => {
             if (unsub) unsub();
         };
-    }, [user, collectionName, readyToListen, syncing, loadLocal]);
+    }, [user, collectionName, readyToListen, syncing]);
 
     return {
         data,
         loading,
         syncing,
-        refresh: loadLocal,
+        refresh: () => sync(), // Map refresh to sync
         triggerSync: sync
     };
 }

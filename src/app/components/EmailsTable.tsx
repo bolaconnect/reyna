@@ -27,6 +27,7 @@ import { EmailDetailModal } from './EmailDetailModal';
 import { StatusSelect } from './StatusSelect';
 import { NoteInput } from './NoteInput';
 import { Pagination } from './Pagination';
+import { CategorySelect } from './CategorySelect';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAlarms } from '../hooks/useAlarms';
@@ -45,14 +46,22 @@ export interface EmailRecord {
   status?: string;
   note?: string;
   liveStatus?: string;
+  categoryId?: string;
   bookmarked?: boolean;
-  categoryId?: string | null;
 }
+
+export interface CardRecord {
+  id: string;
+  linkedEmails?: string[];
+}
+
+import { EmailCategoryRecord } from '../lib/db';
 
 interface EmailsTableProps {
   refreshKey?: number;
   searchQuery?: string;
   onSearchChange?: (val: string) => void;
+  activeCategoryId?: string | null;
 }
 
 /** Format a single email record for quick-copy: fields separated by 2 spaces */
@@ -74,7 +83,7 @@ const TOAST_STYLE = {
   border: 'none',
 };
 
-export function EmailsTable({ refreshKey, searchQuery, onSearchChange }: EmailsTableProps) {
+export function EmailsTable({ refreshKey, searchQuery, onSearchChange, activeCategoryId }: EmailsTableProps) {
   const { user } = useAuth();
   const { isVisible } = useVisibility();
   const [loading, setLoading] = useState(true);
@@ -167,6 +176,9 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange }: EmailsT
     refresh
   } = useFirestoreSync<EmailRecord>('emails', refreshKey);
 
+  const { data: cards } = useFirestoreSync<CardRecord>('cards');
+  const { data: categories } = useFirestoreSync<EmailCategoryRecord>('categories');
+
   // Set loading state
   useEffect(() => {
     if (!initialLoading) setLoading(false);
@@ -235,8 +247,9 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange }: EmailsT
     const matchesNote = !filters.note || email.note?.toLowerCase().includes(filters.note.toLowerCase());
     const matchesBookmarked = !filters.bookmarked || email.bookmarked === true;
     const matchesHasAlarm = !filters.hasAlarm || nearestAlarmsMap.has(email.id);
+    const matchesCategory = activeCategoryId === null || activeCategoryId === undefined || email.categoryId === activeCategoryId;
 
-    return matchesSearch && matchesStatus && matchesNote && matchesBookmarked && matchesHasAlarm;
+    return matchesSearch && matchesStatus && matchesNote && matchesBookmarked && matchesHasAlarm && matchesCategory;
   });
 
   // Pagination logic
@@ -673,6 +686,9 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange }: EmailsT
     const isLiveValid = rec.liveStatus?.toLowerCase() === 'valid id' || rec.liveStatus?.toLowerCase() === 'valid' || rec.liveStatus?.toLowerCase().includes('catch-all') || rec.liveStatus?.toLowerCase() === 'ok';
     const isLiveInvalid = rec.liveStatus && !isLiveValid;
 
+    const linkedCardsCount = cards.filter(c => c.linkedEmails?.includes(rec.id)).length;
+    const categoryName = categories.find(c => c.id === rec.categoryId)?.name || '-';
+
     const rowBg = isCopied
       ? 'bg-blue-100'
       : isEditing
@@ -692,7 +708,7 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange }: EmailsT
         initial={{ opacity: 1, height: 44 }}
         exit={{ opacity: 0, height: 0, overflow: 'hidden' }}
         transition={{ duration: 0.25, ease: 'easeInOut' }}
-        className={`border-b border-gray-50 h-11 transition-colors ${rowBg} group/row cursor-pointer`}
+        className={`border-b border-gray-50 h-11 transition-colors ${rowBg} group/row cursor-pointer relative ${isHovered ? 'z-20' : 'z-10'}`}
         onMouseEnter={() => !isEditing && setHoveredId(rec.id)}
         onMouseLeave={() => setHoveredId(null)}
         onClick={() => { if (!isEditing) { setSelectedIds(new Set([rec.id])); setConfirmDeleteId(null); } }}
@@ -832,6 +848,29 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange }: EmailsT
           />
         </td>
 
+        {/* Category */}
+        <td className="px-3 py-0 whitespace-nowrap text-[12px] text-gray-600 truncate">
+          <div className="scale-90 origin-left max-w-[140px]">
+            <CategorySelect
+              value={rec.categoryId}
+              options={categories}
+              onChange={(val) => updateField(rec.id, 'categoryId', val || '')}
+            />
+          </div>
+        </td>
+
+        {/* Linked Cards Count */}
+        <td className="px-3 py-0 whitespace-nowrap text-[12px] text-gray-600 font-medium">
+          {linkedCardsCount > 0 ? (
+            <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full ring-1 ring-blue-500/10">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+              {linkedCardsCount} thẻ
+            </span>
+          ) : (
+            <span className="text-gray-300">-</span>
+          )}
+        </td>
+
         {/* Actions column */}
         {isEditing ? (
           <td className="px-2 py-0 text-right" onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }}>
@@ -931,9 +970,11 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange }: EmailsT
                   <col className="w-[12%]" />
                   <col className="w-[10%]" />
                   <col className="w-[9%]" />
-                  <col className="w-[8%]" />
+                  <col className="w-[7%]" />
                   <col style={{ width: '80px' }} />
-                  <col className="w-[13%]" />
+                  <col className="w-[10%]" />
+                  <col className="w-[10%]" />
+                  <col className="w-[10%]" />
                   <col style={{ width: '110px' }} />
                 </colgroup>
                 <thead className="sticky top-0 bg-white z-10">
@@ -991,6 +1032,12 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange }: EmailsT
                     </th>
                     <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
                       Note
+                    </th>
+                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+                      Phân loại
+                    </th>
+                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+                      Thẻ liên kết
                     </th>
                     <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
                       Actions

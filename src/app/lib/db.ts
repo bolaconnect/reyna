@@ -15,7 +15,7 @@ export interface LocalCardRecord {
     cvv: string;
     status: string;
     note: string;
-    linkedEmails?: string[]; // Mảng các email ID
+    linkedEmails?: string[]; // Array of associated LocalEmailRecord IDs
     updatedAt: number;
 }
 
@@ -30,7 +30,7 @@ export interface LocalEmailRecord {
     status?: string;
     note?: string;
     liveStatus?: string;
-    categoryId?: string; // Tên danh mục hoặc ID danh mục
+    categoryId?: string; // Links this email to a category
     updatedAt: number;
 }
 
@@ -60,20 +60,21 @@ export interface NotificationRecord {
     updatedAt: number;
 }
 
-export interface CategoryRecord {
+export interface EmailCategoryRecord {
     id: string;
     userId: string;
     name: string;
+    createdAt: number;
     updatedAt: number;
 }
 
 export class AppDB extends Dexie {
     cards!: Table<LocalCardRecord>;
     emails!: Table<LocalEmailRecord>;
-    categories!: Table<CategoryRecord>;
     syncMeta!: Table<SyncMeta>;
     alarms!: Table<AlarmRecord>;
     notifications!: Table<NotificationRecord>;
+    categories!: Table<EmailCategoryRecord>;
 
     constructor() {
         super('PersonalManagerDB');
@@ -82,15 +83,13 @@ export class AppDB extends Dexie {
             emails: 'id, userId, status, updatedAt',
             syncMeta: '[userId+collectionName]',
         });
-        this.version(6).stores({
-            cards: 'id, userId, status, updatedAt', // added linkedEmails implicitly (arrays aren't indexed here usually unless multiEntry)
-            emails: 'id, userId, status, categoryId, updatedAt',
-            categories: 'id, userId, name, updatedAt',
+        this.version(6).stores({ // Bumped version to 6 for new table
+            cards: 'id, userId, status, updatedAt',
+            emails: 'id, userId, status, categoryId, updatedAt', // Added categoryId index to emails
             syncMeta: '[userId+collectionName]',
             alarms: 'id, userId, recordId, triggerAt, fired, doneAt, updatedAt',
             notifications: 'id, userId, createdAt, readAt, recordId, collection, updatedAt',
-        }).upgrade(tx => {
-            // Add default structure if needed or handle migration
+            categories: 'id, userId, updatedAt',
         });
     }
 }

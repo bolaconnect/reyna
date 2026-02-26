@@ -135,6 +135,12 @@ export class SyncService {
         const meta = await dbLocal.syncMeta.get({ userId, collectionName });
         const lastSyncTime = meta ? meta.lastSyncTime : 0;
 
+        // For 'categories', we always do a full sync to avoid composite index issues.
+        // Categories are small enough that this is efficient.
+        if (collectionName === 'categories') {
+            return await this.asyncSyncBatch(collectionName, userId, 0);
+        }
+
         if (lastSyncTime > 0) {
             try {
                 return await this.asyncSyncBatch(collectionName, userId, lastSyncTime);

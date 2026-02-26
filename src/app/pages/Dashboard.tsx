@@ -8,8 +8,7 @@ import { EmailsTable } from '../components/EmailsTable';
 import { QuickAddModal } from '../components/QuickAddModal';
 import { AddCardModal } from '../components/AddCardModal';
 import { AddEmailModal } from '../components/AddEmailModal';
-import { CardEmailManager } from '../components/CardEmailManager';
-import { Plus, Zap, CreditCard, Mail, Eye, EyeOff, LogOut, ChevronLeft, ChevronRight, User, Bell, Settings, Lock, Network } from 'lucide-react';
+import { Plus, Zap, CreditCard, Mail, Eye, EyeOff, LogOut, ChevronLeft, ChevronRight, User, Bell, Settings, Lock, Folder } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { auth } from '../../firebase/config';
 import { useNotification } from '../hooks/useNotification';
@@ -20,8 +19,10 @@ import { PinGuard, usePin } from '../components/PinGuard';
 import { dbLocal } from '../lib/db';
 import { motion, AnimatePresence } from 'motion/react';
 import { useFirestoreSync } from '../hooks/useFirestoreSync';
+import { SidebarCategories } from '../components/SidebarCategories';
+import { CategoryExplorer } from '../components/CategoryExplorer';
 
-type Tab = 'cards' | 'emails' | 'manager';
+type Tab = 'cards' | 'emails' | 'categories';
 
 export function Dashboard() {
   const { user, loading } = useAuth();
@@ -46,6 +47,7 @@ export function Dashboard() {
   const [showAddEmail, setShowAddEmail] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedSearch, setSelectedSearch] = useState<string | null>(null);
+  const [activeEmailCategory, setActiveEmailCategory] = useState<string | null>(null);
   const profileRef = useRef<HTMLDivElement>(null);
   const { permission } = useNotification();
 
@@ -103,7 +105,6 @@ export function Dashboard() {
   const navItems: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'cards', label: 'Cards', icon: <CreditCard size={15} /> },
     { id: 'emails', label: 'Emails', icon: <Mail size={15} /> },
-    { id: 'manager', label: 'Liên kết', icon: <Network size={15} /> }
   ];
 
   return (
@@ -114,9 +115,9 @@ export function Dashboard() {
         initial={false}
         animate={{ width: collapsed ? 64 : 192 }}
         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-        className="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col shrink-0 overflow-visible relative h-full"
+        className="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col shrink-0 overflow-visible relative h-full z-[40]"
       >
-        <div className="flex flex-col flex-1 rounded-2xl overflow-hidden">
+        <div className="flex flex-col flex-1 rounded-2xl">
           {/* Logo / Toggle button */}
           <button
             onClick={() => {
@@ -176,6 +177,17 @@ export function Dashboard() {
                 </AnimatePresence>
               </button>
             ))}
+
+            <SidebarCategories
+              collapsed={collapsed}
+              activeTab={tab}
+              onTabChange={setTab}
+              activeCategory={activeEmailCategory}
+              onSelectCategory={(id) => {
+                setActiveEmailCategory(id);
+                if (id !== null) setTab('categories');
+              }}
+            />
           </nav>
         </div>
 
@@ -311,21 +323,21 @@ export function Dashboard() {
 
         {/* Dynamic Table Content */}
         <div className="flex-1 flex flex-col min-h-0">
-          {tab === 'manager' ? (
-            <div className="flex-1 bg-gray-50/50">
-              <CardEmailManager />
-            </div>
-          ) : tab === 'cards' ? (
+          {tab === 'cards' ? (
             <CardsTable
               refreshKey={refreshKey}
               searchQuery={selectedSearch ?? undefined}
               onSearchChange={() => setSelectedSearch(null)}
             />
-          ) : (
+          ) : tab === 'emails' ? (
             <EmailsTable
               refreshKey={refreshKey}
               searchQuery={selectedSearch ?? undefined}
               onSearchChange={() => setSelectedSearch(null)}
+            />
+          ) : (
+            <CategoryExplorer
+              activeCategoryId={activeEmailCategory}
             />
           )}
         </div>
@@ -333,7 +345,7 @@ export function Dashboard() {
 
       {/* Modals */}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
-      {showQuickAdd && <QuickAddModal mode={tab === 'emails' ? 'emails' : 'cards'} onClose={() => setShowQuickAdd(false)} onImported={handleImported} />}
+      {showQuickAdd && <QuickAddModal mode={tab === 'categories' ? 'emails' : tab} onClose={() => setShowQuickAdd(false)} onImported={handleImported} />}
       {showAddCard && <AddCardModal onClose={() => setShowAddCard(false)} onAdded={handleAdded} />}
       {showAddEmail && <AddEmailModal onClose={() => setShowAddEmail(false)} onAdded={handleAdded} />}
     </div>
