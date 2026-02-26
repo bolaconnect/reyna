@@ -404,9 +404,10 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange }: EmailsT
       if (!rec.email) continue;
       try {
         const targetUrl = `https://gamalogic.com/emailvrf/?emailid=${encodeURIComponent(rec.email)}&apikey=1ud7zt0id4fuayde2mj2bkvv0jny54n4&speed_rank=0`;
-        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
         const res = await fetch(proxyUrl);
-        const data = await res.json();
+        const proxyData = await res.json();
+        const data = JSON.parse(proxyData.contents);
         const vrfy = data?.gamalogic_emailid_vrfy?.[0];
         if (vrfy) {
           const liveStatus = vrfy.message || (vrfy.is_valid ? 'Valid ID' : 'Invalid');
