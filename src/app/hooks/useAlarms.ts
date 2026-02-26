@@ -46,8 +46,9 @@ export function useAlarms({ userId, onNewNotification }: UseAlarmsOptions) {
             await sendNotification(title, { body, tag: alarm.id });
 
             // 2. Log to notifications table
+            const notifId = `notif_${alarm.id}`;
             const notif: NotificationRecord = {
-                id: uuid(),
+                id: notifId,
                 userId,
                 title,
                 body,
@@ -56,12 +57,12 @@ export function useAlarms({ userId, onNewNotification }: UseAlarmsOptions) {
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
             };
-            await dbLocal.notifications.add(notif);
+            await dbLocal.notifications.put(notif);
             // Sync notification to Firestore
             await setDoc(doc(db, 'notifications', notif.id), {
                 ...notif,
                 updatedAt: serverTimestamp(),
-            });
+            }, { merge: true });
 
             // 3. Delete the alarm immediately (user doesn't want history)
             await dbLocal.alarms.delete(alarm.id);
