@@ -21,7 +21,7 @@ import { copyToClipboard } from '../../utils/copy';
 import { CopyCell } from './CopyCell';
 import {
   Search, Filter, Plus, Edit2, Trash2, X, Check, Copy, MoreHorizontal,
-  ChevronLeft, ChevronRight, Bookmark, Clock, ClipboardList, FilterX, Bell, ExternalLink, Key, Info
+  ChevronLeft, ChevronRight, Bookmark, Clock, ClipboardList, FilterX, Bell, ExternalLink, Key, Info, Zap, Loader2
 } from 'lucide-react';
 import { EmailDetailModal } from './EmailDetailModal';
 import { StatusSelect } from './StatusSelect';
@@ -44,6 +44,7 @@ export interface EmailRecord {
   phone?: string;
   status?: string;
   note?: string;
+  liveStatus?: string;
   bookmarked?: boolean;
 }
 
@@ -81,6 +82,7 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange }: EmailsT
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [batchCopied, setBatchCopied] = useState(false);
+  const [checkingLive, setCheckingLive] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [totpCodes, setTotpCodes] = useState<Record<string, string>>({});
   const [remaining, setRemaining] = useState(getRemainingSeconds());
@@ -391,6 +393,40 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange }: EmailsT
     }
   };
 
+  // Batch Verify Emails
+  const handleCheckLive = async () => {
+    const selected = emails.filter((e) => selectedIds.has(e.id));
+    if (!selected.length) return;
+    setCheckingLive(true);
+    let successCount = 0;
+
+    for (const rec of selected) {
+      if (!rec.email) continue;
+      try {
+        const res = await fetch(`https://gamalogic.com/emailvrf/?emailid=${encodeURIComponent(rec.email)}&apikey=1ud7zt0id4fuayde2mj2bkvv0jny54n4&speed_rank=0`);
+        const data = await res.json();
+        const vrfy = data?.gamalogic_emailid_vrfy?.[0];
+        if (vrfy) {
+          const liveStatus = vrfy.message || (vrfy.is_valid ? 'Valid ID' : 'Invalid');
+          await updateDoc(doc(db, 'emails', rec.id), {
+            liveStatus,
+            updatedAt: serverTimestamp()
+          });
+          successCount++;
+        }
+      } catch (e) {
+        console.error('[EmailsTable] Gamalogic API error for', rec.email, e);
+      }
+    }
+
+    setCheckingLive(false);
+    toast(`${successCount}/${selected.length} emails checked!`, {
+      duration: 2000,
+      position: 'bottom-center',
+      style: TOAST_STYLE,
+    });
+  };
+
   // Inline edit helpers
   const startEditing = (rec: EmailRecord) => {
     setEditingId(rec.id);
@@ -582,6 +618,11 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange }: EmailsT
           }`}>{selectedIds.size}</span>
       </div>
       <div className="w-px h-4 bg-gray-200 mx-1" />
+      <button onClick={handleCheckLive} disabled={selectedIds.size === 0 || checkingLive} title="Verify Email LIVE Status"
+        className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${checkingLive ? 'text-blue-500 animate-pulse' : selectedIds.size === 0 ? 'text-gray-200 cursor-default' : 'text-gray-500 hover:bg-gray-100 hover:text-blue-600'
+          }`}>
+        {checkingLive ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
+      </button>
       <button onClick={handleBatchCopy} disabled={selectedIds.size === 0} title="Copy selected rows"
         className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${batchCopied ? 'bg-emerald-500 text-white' : selectedIds.size === 0 ? 'text-gray-200 cursor-default' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
           }`}>
@@ -740,7 +781,21 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange }: EmailsT
           />
         </td>
 
-        {/* Timer cell — between Status and Note */}
+        {/* Live Status */}
+        <td className="px-3 py-0 whitespace-nowrap">
+          {rec.liveStatus ? (
+            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium leading-none ${rec.liveStatus.toLowerCase().includes('valid') || rec.liveStatus.toLowerCase().includes('catch-all') || rec.liveStatus.toLowerCase().includes('ok')
+                ? 'bg-green-100/80 text-green-700 border border-green-200/50'
+                : 'bg-red-50 text-red-600 border border-red-100'
+              }`}>
+              {rec.liveStatus}
+            </span>
+          ) : (
+            <span className="text-gray-300 text-[10px]">-</span>
+          )}
+        </td>
+
+        {/* Timer cell — between Status/Live and Note */}
         <td className="py-0" onClick={e => e.stopPropagation()}>
           <AlarmCell
             recordId={rec.id}
@@ -854,12 +909,13 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange }: EmailsT
               <table className="w-full min-w-[800px] table-fixed border-collapse">
                 <colgroup>
                   <col style={{ width: '36px' }} />
-                  <col className="w-[20%]" />
-                  <col className="w-[14%]" />
-                  <col className="w-[11%]" />
+                  <col className="w-[18%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[10%]" />
                   <col className="w-[9%]" />
-                  <col className="w-[13%]" />
+                  <col className="w-[8%]" />
                   <col style={{ width: '80px' }} />
+                  <col className="w-[13%]" />
                   <col style={{ width: '110px' }} />
                 </colgroup>
                 <thead className="sticky top-0 bg-white z-10">
@@ -900,6 +956,9 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange }: EmailsT
                           {sortCol === 'status' && sortDir === 'desc' ? '▼' : '▲'}
                         </span>
                       </span>
+                    </th>
+                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+                      Live
                     </th>
                     <th
                       className="px-1 py-1.5 text-center text-[11px] font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none hover:text-gray-600 group"

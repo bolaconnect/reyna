@@ -28,6 +28,7 @@ export interface LocalEmailRecord {
     phone?: string;
     status?: string;
     note?: string;
+    liveStatus?: string;
     updatedAt: number;
 }
 
