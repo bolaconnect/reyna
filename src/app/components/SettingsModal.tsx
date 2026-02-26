@@ -1,8 +1,9 @@
-import { X, Moon, Bell, Settings, Layers, Shield, Key, Trash2, ChevronRight, Check } from 'lucide-react';
+import { X, Check, Eye, EyeOff, LayoutTemplate, Shield, Bell, Layers, Key, Trash2, ChevronRight, Settings } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useState } from 'react';
 import { hashPin, usePin } from './PinGuard';
 import { useUserSettings } from '../hooks/useUserSettings';
+import { useNotification } from '../hooks/useNotification';
 
 // Re-export types that other parts of the app may reference
 export type AppSettings = {
@@ -168,6 +169,7 @@ function PinSection({ hasPin, setHasPin }: { hasPin: boolean; setHasPin: (v: boo
 export function SettingsModal({ onClose }: SettingsModalProps) {
     const { prefs, update } = useUserSettings();
     const { hasPin, setHasPin } = usePin();
+    const { sendNotification, requestPermission } = useNotification();
 
     return (
         <div
@@ -250,21 +252,17 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                                 </div>
                                 <button
                                     onClick={async () => {
-                                        if (Notification.permission === 'default') {
-                                            await Notification.requestPermission();
-                                        }
-                                        if (Notification.permission === 'granted') {
-                                            if ('serviceWorker' in navigator) {
-                                                const reg = await navigator.serviceWorker.getRegistration();
-                                                if (reg && reg.active) {
-                                                    reg.showNotification('✅ Reyna: Thông báo hoạt động', { body: 'Hệ thống thông báo đẩy qua Service Worker đã sẵn sàng.' });
-                                                    return;
-                                                }
+                                        if (Notification.permission === 'default' || Notification.permission === 'denied') {
+                                            const perm = await requestPermission();
+                                            if (perm !== 'granted') {
+                                                alert('Trình duyệt của bạn đang chặn thông báo. Vui lòng cấp quyền ở biểu tượng hình ổ khóa trên thanh địa chỉ trình duyệt.');
+                                                return;
                                             }
-                                            new Notification('✅ Reyna: Thông báo hoạt động', { body: 'Hệ thống thông báo đẩy (Native) đã hoạt động.' });
-                                        } else {
-                                            alert('Trình duyệt của bạn đang chặn thông báo. Vui lòng cấp quyền trong cài đặt trình duyệt.');
                                         }
+
+                                        await sendNotification('✅ Reyna: Thông báo hoạt động', {
+                                            body: 'Hệ thống thông báo đẩy đã sẵn sàng!',
+                                        });
                                     }}
                                     className="px-3 py-1.5 text-[12px] font-medium bg-white border border-gray-200 shadow-sm rounded-lg hover:bg-gray-50 text-gray-700 transition-all"
                                 >

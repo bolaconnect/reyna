@@ -52,35 +52,43 @@ export function useNotification() {
 
         try {
             const { onClick, ...notifOptions } = options ?? {};
+            const iconPath = `${(import.meta as any).env.BASE_URL}logo.png`;
 
             // Try Service Worker first for better PWA / Modern Browser Support
             if ('serviceWorker' in navigator) {
                 try {
-                    const registration = await navigator.serviceWorker.getRegistration();
+                    console.log('[Notification] Trying Service Worker...');
+                    const registration = await navigator.serviceWorker.getRegistration((import.meta as any).env.BASE_URL);
                     if (registration && registration.active) {
+                        console.log('[Notification] Service Worker is active. Calling showNotification...');
                         await registration.showNotification(title, {
-                            icon: 'logo.png',
-                            badge: 'logo.png',
+                            icon: iconPath,
+                            badge: iconPath,
                             ...notifOptions,
                         });
+                        console.log('[Notification] showNotification called via Service Worker.');
                         return null; // Return null as we can't attach onclick to SW notification easily here
+                    } else {
+                        console.log('[Notification] Service Worker registration not found or inactive.');
                     }
                 } catch (swError) {
-                    console.warn('Service Worker not ready for notification:', swError);
+                    console.warn('[Notification] Service Worker getRegistration error:', swError);
                 }
             }
 
             // Fallback to traditional Notification API
+            console.log('[Notification] Falling back to traditional Notification API...');
             const notif = new Notification(title, {
-                icon: 'logo.png',
-                badge: 'logo.png',
+                icon: iconPath,
+                badge: iconPath,
                 ...notifOptions,
             });
 
             if (onClick) notif.onclick = onClick;
+            console.log('[Notification] Traditional Notification object created.');
             return notif;
         } catch (err) {
-            console.error('Error creating notification:', err);
+            console.error('[Notification] Error creating notification:', err);
             return null;
         }
     }, [isSupported, requestPermission]);
