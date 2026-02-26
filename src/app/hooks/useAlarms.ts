@@ -14,8 +14,8 @@ interface UseAlarmsOptions {
     onNewNotification?: () => void; // callback to refresh notification center
 }
 
-export function useAlarms({ userId, onNewNotification }: UseAlarmsOptions) {
-    const { sendNotification, permission } = useNotification();
+export function useAlarmPoller({ userId, onNewNotification }: UseAlarmsOptions) {
+    const { sendNotification } = useNotification();
 
     const checkAlarms = useCallback(async () => {
         if (!userId) return;
@@ -79,7 +79,9 @@ export function useAlarms({ userId, onNewNotification }: UseAlarmsOptions) {
         const interval = setInterval(checkAlarms, 15_000);
         return () => clearInterval(interval);
     }, [userId, checkAlarms]);
+}
 
+export function useAlarms({ userId }: { userId: string | undefined }) {
     // ── CRUD helpers ──────────────────────────────────────
 
     const addAlarm = useCallback(async (alarm: Omit<AlarmRecord, 'id' | 'userId' | 'fired' | 'createdAt' | 'updatedAt'>) => {
@@ -134,5 +136,5 @@ export function useAlarms({ userId, onNewNotification }: UseAlarmsOptions) {
         return map;
     }, [userId]) || new Map<string, number>();
 
-    return { addAlarm, deleteAlarm, getAlarmsForRecord, checkAlarms, markAsDone, nearestAlarmsMap };
+    return { addAlarm, deleteAlarm, getAlarmsForRecord, markAsDone, nearestAlarmsMap };
 }

@@ -12,7 +12,7 @@ import { Plus, Zap, CreditCard, Mail, Eye, EyeOff, LogOut, ChevronLeft, ChevronR
 import { signOut } from 'firebase/auth';
 import { auth } from '../../firebase/config';
 import { useNotification } from '../hooks/useNotification';
-import { useAlarms } from '../hooks/useAlarms';
+import { useAlarmPoller } from '../hooks/useAlarms';
 import { NotificationCenter } from '../components/NotificationCenter';
 import { SettingsModal, useSettings } from '../components/SettingsModal';
 import { PinGuard, usePin } from '../components/PinGuard';
@@ -69,7 +69,7 @@ export function Dashboard() {
     setSelectedSearch(recordId);
   }, []);
 
-  useAlarms({ userId: user?.uid, onNewNotification: handleNewNotification });
+  useAlarmPoller({ userId: user?.uid, onNewNotification: handleNewNotification });
 
   useEffect(() => {
     if (!loading && !user) navigate('/', { replace: true });
