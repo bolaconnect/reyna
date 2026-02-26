@@ -12,13 +12,39 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-messaging.onBackgroundMessage((payload) => {
-    console.log('[firebase-messaging-sw.js] Received background message ', payload);
-    const notificationTitle = payload.notification.title;
-    const notificationOptions = {
-        body: payload.notification.body,
-        icon: './logo.png'
-    };
+console.log('[firebase-messaging-sw.js] Service Worker script loaded and Firebase initialized.');
 
-    self.registration.showNotification(notificationTitle, notificationOptions);
+self.addEventListener('install', (event) => {
+    console.log('[firebase-messaging-sw.js] Installing Service Worker...', event);
+    self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+    console.log('[firebase-messaging-sw.js] Activating Service Worker...', event);
+});
+
+messaging.onBackgroundMessage((payload) => {
+    console.log('[firebase-messaging-sw.js] 🔔 onBackgroundMessage EVENT FIRED! Payload:', payload);
+
+    try {
+        const notificationTitle = payload.notification?.title || 'Thông báo mới';
+        const notificationOptions = {
+            body: payload.notification?.body || '',
+            icon: './logo.png',
+            data: payload.data || {}
+        };
+
+        console.log('[firebase-messaging-sw.js] Calling self.registration.showNotification...', notificationTitle, notificationOptions);
+
+        self.registration.showNotification(notificationTitle, notificationOptions)
+            .then(() => console.log('[firebase-messaging-sw.js] showNotification PROMISE RESOLVED successfully!'))
+            .catch((err) => console.error('[firebase-messaging-sw.js] showNotification PROMISE REJECTED with error:', err));
+    } catch (err) {
+        console.error('[firebase-messaging-sw.js] Error inside onBackgroundMessage block:', err);
+    }
+});
+
+self.addEventListener('notificationclick', (event) => {
+    console.log('[firebase-messaging-sw.js] 🖱️ notificationclick EVENT FIRED!', event);
+    event.notification.close();
 });
