@@ -188,6 +188,7 @@ export function Dashboard() {
                 if (id !== null) setTab('categories');
               }}
             />
+            <div className="h-24"></div> {/* Spacer to prevent absolute menu cutoff */}
           </nav>
         </div>
 
@@ -227,7 +228,7 @@ export function Dashboard() {
             <div className="w-5 h-5 flex items-center justify-center shrink-0 relative">
               <Bell size={16} />
               {unreadCount > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-[16px] px-1 text-[9px] font-bold bg-amber-500 text-white rounded-full flex items-center justify-center border-2 border-white">
+                <span className="absolute -top-1.5 -right-2 min-w-[18px] h-[18px] px-1 text-[10px] font-bold bg-amber-500 text-white rounded-full flex items-center justify-center border-2 border-white leading-none shadow-sm">
                   {unreadCount > 9 ? '9+' : unreadCount}
                 </span>
               )}
@@ -313,10 +314,20 @@ export function Dashboard() {
           <div id="table-filter-slot" className="flex items-center gap-2 flex-1 justify-end" />
           <div className="flex items-center gap-2">
             <button
+              onClick={toggleVisibility}
+              title={isVisible ? "Ẩn thông tin nhạy cảm" : "Hiện thông tin nhạy cảm"}
+              className={`flex items-center justify-center w-8 h-8 rounded-lg transition-colors ${isVisible
+                ? 'bg-blue-100 text-blue-600'
+                : 'bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-gray-700'
+                }`}
+            >
+              {isVisible ? <Eye size={14} /> : <EyeOff size={14} />}
+            </button>
+            <button
               onClick={() => setShowQuickAdd(true)}
               className="flex items-center gap-1.5 h-8 px-3 text-[12px] font-medium text-purple-700 bg-purple-50 border border-purple-100 rounded-lg hover:bg-purple-100 transition-colors whitespace-nowrap"
             >
-              <Zap size={12} /> <span className="hidden sm:inline">Add</span>
+              <Zap size={12} /> <span className="hidden sm:inline">Thêm nhanh</span>
             </button>
           </div>
         </div>

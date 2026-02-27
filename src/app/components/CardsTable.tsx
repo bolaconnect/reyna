@@ -106,6 +106,7 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange }: CardsTab
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<CardRecord>>({});
   const [savingEdit, setSavingEdit] = useState(false);
+  const editRowRef = useRef<HTMLTableRowElement>(null);
 
   // Per-row delete confirmation
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -459,12 +460,12 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange }: CardsTab
     };
     // Next frame so the current click (that SET confirmDeleteId) doesn't immediately dismiss
     const rafId = requestAnimationFrame(() => {
-      document.addEventListener('click', handleDocClick, true);
+      document.addEventListener('click', handleDocClick, { capture: true });
     });
     return () => {
       clearTimeout(timer);
       cancelAnimationFrame(rafId);
-      document.removeEventListener('click', handleDocClick, true);
+      document.removeEventListener('click', handleDocClick, { capture: true });
     };
   }, [confirmDeleteId]);
 
@@ -568,6 +569,7 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange }: CardsTab
       <div className="scale-90 origin-left -mr-2">
         <StatusSelect
           value={filters.status}
+          collectionType="cards"
           onChange={(val) => {
             setFilters(f => ({ ...f, status: val }));
             // For select, user might expect immediate search, but since they asked for explicit search button, we keep it consistent.
@@ -718,7 +720,7 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange }: CardsTab
             <p className="mt-3 text-[13px] text-gray-400">No cards yet</p>
           </div>
         ) : (
-          <div className="flex-1 min-h-0 overflow-auto">
+          <div className="flex-1 min-h-0 overflow-auto custom-scrollbar">
 
             <table className="w-full min-w-[800px] table-fixed border-collapse">
               <colgroup>
@@ -745,8 +747,8 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange }: CardsTab
                   </th>
                   {([
                     { col: 'cardNumber' as const, label: 'Card Number', cls: 'px-4' },
-                    { col: 'expiry' as const, label: 'Expiry', cls: 'px-4' },
-                    { col: 'cvv' as const, label: 'CVV', cls: 'px-4' },
+                    { col: 'expiry' as const, label: 'Expiry', cls: 'px-4 text-center' },
+                    { col: 'cvv' as const, label: 'CVV', cls: 'px-4 text-center' },
                     { col: 'status' as const, label: 'Status', cls: 'px-3' },
                     { col: 'payAmount' as const, label: 'Pay', cls: 'px-3 text-center' },
                   ]).map(({ col, label, cls }) => (
@@ -812,19 +814,14 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange }: CardsTab
                       <motion.tr
                         key={card.id}
                         layout
+                        ref={isEditing ? editRowRef : null}
                         initial={{ opacity: 1, height: 44 }}
                         exit={{ opacity: 0, height: 0, overflow: 'hidden' }}
                         transition={{ duration: 0.25, ease: 'easeInOut' }}
-                        className={`border-b border-gray-50 h-11 transition-colors ${rowBg} group/row cursor-pointer`}
+                        className={`border-b border-gray-50 h-11 transition-colors ${rowBg} group/row cursor-pointer relative focus-within:z-[60] ${isHovered ? 'z-20' : 'z-10'}`}
                         onMouseEnter={() => !isEditing && setHoveredId(card.id)}
                         onMouseLeave={() => setHoveredId(null)}
                         onClick={() => { if (!isEditing) { setSelectedIds(new Set([card.id])); setConfirmDeleteId(null); } }}
-                        onDoubleClick={(e) => {
-                          if (!isEditing) {
-                            e.stopPropagation();
-                            startEditing(card);
-                          }
-                        }}
                       >
                         {/* Checkbox */}
                         <td className="px-2 py-0 text-center" onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }}>
@@ -851,10 +848,11 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange }: CardsTab
                         ) : (
                           <CopyCell
                             value={card.cardNumber}
-                            tdClassName="px-0 py-0"
-                            className="px-4 h-11"
                             onCopied={() => handleCopied(card.id)}
                             onSelect={() => setSelectedIds(new Set([card.id]))}
+                            tdClassName="px-0 py-0"
+                            className="px-4 h-11"
+                            onDoubleClick={(e) => { if (!isEditing) { e.stopPropagation(); startEditing(card); } }}
                           >
                             <span className="truncate text-[13px] text-gray-800 font-mono tracking-wide">
                               {getCardNumberDisplay(card)}
@@ -870,16 +868,17 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange }: CardsTab
                               onChange={(e) => setEditForm((f) => ({ ...f, expiryDate: e.target.value }))}
                               onKeyDown={handleEditKeyDown}
                               placeholder="MM/YY"
-                              className="w-full h-7 px-2 text-[13px] font-mono text-gray-800 bg-white border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-400"
+                              className="w-full h-7 px-2 text-[13px] font-mono text-gray-800 bg-white border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 text-center"
                             />
                           </td>
                         ) : (
                           <CopyCell
                             value={card.expiryDate}
-                            tdClassName="px-0 py-0"
-                            className="px-4 h-11"
+                            tdClassName="px-0 py-0 text-center"
+                            className="px-4 h-11 flex justify-center items-center"
                             onCopied={() => handleCopied(card.id)}
                             onSelect={() => setSelectedIds(new Set([card.id]))}
+                            onDoubleClick={(e) => { if (!isEditing) { e.stopPropagation(); startEditing(card); } }}
                           >
                             <span className="truncate text-[13px] text-gray-700 font-mono">
                               {card.expiryDate ? formatExpiry(card.expiryDate) : '—'}
@@ -895,7 +894,7 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange }: CardsTab
                               onChange={(e) => setEditForm((f) => ({ ...f, cvv: e.target.value }))}
                               onKeyDown={handleEditKeyDown}
                               placeholder="CVV"
-                              className="w-full h-7 px-2 text-[13px] font-mono text-gray-800 bg-white border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-400"
+                              className="w-full h-7 px-2 text-[13px] font-mono text-gray-800 bg-white border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 text-center"
                             />
                           </td>
                         ) : (
@@ -905,6 +904,7 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange }: CardsTab
                             className="px-4 h-11"
                             onCopied={() => handleCopied(card.id)}
                             onSelect={() => setSelectedIds(new Set([card.id]))}
+                            onDoubleClick={(e) => { if (!isEditing) { e.stopPropagation(); startEditing(card); } }}
                           >
                             <span className="truncate text-[13px] text-gray-700 font-mono tracking-widest">
                               {getCvvDisplay(card)}
@@ -916,16 +916,19 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange }: CardsTab
                         <td className="px-3 py-0">
                           <StatusSelect
                             value={card.status ?? ''}
+                            collectionType="cards"
                             onChange={(val) => updateField(card.id, 'status', val)}
                           />
                         </td>
-
-                        {/* Pay */}
                         <td className="px-3 py-0 align-middle">
                           <PayInput
                             value={card.payAmount}
                             onChange={async (val) => {
-                              try { await updateDoc(doc(db, 'cards', card.id), { payAmount: val }); }
+                              try {
+                                const ts = Date.now();
+                                await updateDoc(doc(db, 'cards', card.id), { payAmount: val, updatedAt: serverTimestamp() });
+                                await dbLocal.cards.update(card.id, { payAmount: val, updatedAt: ts });
+                              }
                               catch { toast.error('Lỗi khi cập nhật Pay'); }
                             }}
                           />
@@ -972,13 +975,13 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange }: CardsTab
                             </div>
                           </td>
                         ) : (
-                          <td className="px-2 py-0 text-right" onClick={(e) => { e.stopPropagation(); setSelectedIds(new Set([card.id])); setConfirmDeleteId(null); }}>
-                            <div className="inline-flex items-center gap-0.5">
+                          <td className="px-2 py-0 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
                               {confirmDeleteId === card.id ? (
                                 <button
                                   data-delete-confirm
                                   onClick={(e) => { e.stopPropagation(); setSelectedIds(new Set([card.id])); handleDeleteOne(card.id); setConfirmDeleteId(null); }}
-                                  className="flex items-center gap-1 px-2 py-1 rounded bg-red-500 text-white text-[11px] hover:bg-red-600 transition-all"
+                                  className="flex items-center gap-1 px-2 py-1 rounded-lg bg-red-500 text-white text-[11px] hover:bg-red-600 transition-all font-medium shadow-sm"
                                   title="Click to confirm delete"
                                 >
                                   <Trash2 size={12} />
@@ -988,22 +991,22 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange }: CardsTab
                                 <button
                                   data-delete-confirm
                                   onClick={(e) => { e.stopPropagation(); setSelectedIds(new Set([card.id])); setConfirmDeleteId(card.id); }}
-                                  className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+                                  className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
                                   title="Delete"
                                 >
                                   <Trash2 size={14} />
                                 </button>
                               )}
                               <button
-                                onClick={() => setDetailCard(card)}
-                                className="p-1.5 rounded hover:bg-blue-50 text-gray-400 hover:text-blue-500 transition-colors"
+                                onClick={(e) => { e.stopPropagation(); setDetailCard(card); }}
+                                className="p-1.5 rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-500 transition-colors"
                                 title="Info"
                               >
                                 <Info size={14} />
                               </button>
                               <button
                                 onClick={(e) => { e.stopPropagation(); toggleBookmark(card); }}
-                                className={`p-1.5 rounded transition-colors ${card.bookmarked
+                                className={`p-1.5 rounded-lg transition-colors ${card.bookmarked
                                   ? 'text-amber-500 hover:bg-amber-50'
                                   : 'text-gray-400 hover:bg-amber-50 hover:text-amber-500'
                                   }`}
@@ -1013,7 +1016,7 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange }: CardsTab
                               </button>
                               <button
                                 onClick={(e) => handleQuickCopy(e, card)}
-                                className="p-1.5 rounded hover:bg-emerald-50 text-gray-400 hover:text-emerald-500 transition-colors"
+                                className="p-1.5 rounded-lg hover:bg-emerald-50 text-gray-400 hover:text-emerald-500 transition-colors"
                                 title="Copy"
                               >
                                 <Copy size={14} />

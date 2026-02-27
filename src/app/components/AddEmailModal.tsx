@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useAuth } from '../../contexts/AuthContext';
 import { X, Mail } from 'lucide-react';
-import { STATUS_OPTIONS } from './StatusSelect';
+import { StatusSelect } from './StatusSelect';
+import { useFirestoreSync } from '../hooks/useFirestoreSync';
+import { StatusRecord } from '../lib/db';
 
 interface AddEmailModalProps {
   onClose: () => void;
@@ -65,6 +67,16 @@ export function AddEmailModal({ onClose, onAdded }: AddEmailModalProps) {
   const set = (key: keyof typeof INITIAL) => (val: string) =>
     setForm((f) => ({ ...f, [key]: val }));
 
+  const { data: allStatuses } = useFirestoreSync<StatusRecord>('statuses');
+  const options = allStatuses.filter(s => s.collection === 'emails');
+
+  useEffect(() => {
+    if (form.status === '' && options.length > 0) {
+      const activeOpt = options.find(o => o.name.toLowerCase() === 'active');
+      setForm(f => ({ ...f, status: activeOpt ? activeOpt.id : options[0].id }));
+    }
+  }, [options, form.status]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
@@ -82,7 +94,7 @@ export function AddEmailModal({ onClose, onAdded }: AddEmailModalProps) {
       await addDoc(collection(db, 'emails'), {
         ...form,
         userId: user.uid,
-        status: form.status || 'Active',
+        status: form.status || '',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -154,16 +166,11 @@ export function AddEmailModal({ onClose, onAdded }: AddEmailModalProps) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[12px] font-medium text-gray-500 mb-1">Status</label>
-              <select
+              <StatusSelect
+                collectionType="emails"
                 value={form.status}
-                onChange={(e) => set('status')(e.target.value)}
-                className="w-full px-3 py-2 text-[13px] text-gray-800 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 focus:bg-white transition-colors"
-              >
-                <option value="">None</option>
-                {STATUS_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
+                onChange={set('status')}
+              />
             </div>
             <Field
               label="Note"

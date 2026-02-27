@@ -140,7 +140,7 @@ export function EmailDetailModal({ record, totpCode, onClose, onUpdated }: Props
 
   return (
     <div
-      className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[9999] p-4"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div className="animate-scale-in bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[88vh]">

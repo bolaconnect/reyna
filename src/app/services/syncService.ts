@@ -14,7 +14,7 @@ import {
 import { dbLocal } from '../lib/db';
 import { db as firestoreDb } from '../../firebase/config';
 
-export type SyncableCollection = 'cards' | 'emails' | 'alarms' | 'notifications' | 'categories';
+export type SyncableCollection = 'cards' | 'emails' | 'alarms' | 'notifications' | 'categories' | 'statuses';
 
 export class SyncService {
     private static getTable(collectionName: SyncableCollection) {
@@ -24,6 +24,7 @@ export class SyncService {
             case 'alarms': return dbLocal.alarms;
             case 'notifications': return dbLocal.notifications;
             case 'categories': return dbLocal.categories;
+            case 'statuses': return dbLocal.statuses;
         }
     }
 
@@ -135,9 +136,9 @@ export class SyncService {
         const meta = await dbLocal.syncMeta.get({ userId, collectionName });
         const lastSyncTime = meta ? meta.lastSyncTime : 0;
 
-        // For 'categories', we always do a full sync to avoid composite index issues.
-        // Categories are small enough that this is efficient.
-        if (collectionName === 'categories') {
+        // For 'categories' and 'statuses', we always do a full sync to avoid composite index issues.
+        // These are small enough that this is efficient.
+        if (collectionName === 'categories' || collectionName === 'statuses') {
             return await this.asyncSyncBatch(collectionName, userId, 0);
         }
 

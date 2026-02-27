@@ -106,6 +106,7 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange, activeCat
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<EmailRecord>>({});
   const [savingEdit, setSavingEdit] = useState(false);
+  const editRowRef = useRef<HTMLTableRowElement>(null);
 
   // Per-row delete confirmation
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -472,20 +473,26 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange, activeCat
         updatedAt: serverTimestamp(),
       });
       setEditingId(null);
-      setEditForm({});
+      refresh();
     } catch (err: any) {
-      if (err?.code === 'not-found') {
-        await dbLocal.emails.delete(editingId);
-        setEditingId(null);
-        setEditForm({});
-        refresh();
-      } else {
-        console.error('[EmailsTable] Update error:', err?.code, err?.message);
-      }
+      toast.error('Error saving row');
     } finally {
       setSavingEdit(false);
     }
   };
+
+  // Auto-save when clicking outside the editing row
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (editingId && editRowRef.current && !editRowRef.current.contains(event.target as Node)) {
+        commitEdit();
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside, { capture: true });
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside, { capture: true });
+    };
+  }, [editingId, commitEdit]);
 
   const handleEditKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') { e.preventDefault(); commitEdit(); }
@@ -581,6 +588,7 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange, activeCat
       <div className="scale-90 origin-left -mr-2">
         <StatusSelect
           value={filters.status}
+          collectionType="emails"
           onChange={(val) => setFilters(f => ({ ...f, status: val }))}
         />
       </div>
@@ -705,19 +713,14 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange, activeCat
       <motion.tr
         key={rec.id}
         layout
+        ref={isEditing ? editRowRef : null}
         initial={{ opacity: 1, height: 44 }}
         exit={{ opacity: 0, height: 0, overflow: 'hidden' }}
         transition={{ duration: 0.25, ease: 'easeInOut' }}
-        className={`border-b border-gray-50 h-11 transition-colors ${rowBg} group/row cursor-pointer relative ${isHovered ? 'z-20' : 'z-10'}`}
+        className={`border-b border-gray-50 h-11 transition-colors ${rowBg} group/row cursor-pointer relative focus-within:z-[60] ${isHovered ? 'z-20' : 'z-10'}`}
         onMouseEnter={() => !isEditing && setHoveredId(rec.id)}
         onMouseLeave={() => setHoveredId(null)}
         onClick={() => { if (!isEditing) { setSelectedIds(new Set([rec.id])); setConfirmDeleteId(null); } }}
-        onDoubleClick={(e) => {
-          if (!isEditing) {
-            e.stopPropagation();
-            startEditing(rec);
-          }
-        }}
       >
         {/* Checkbox */}
         <td className="px-2 py-0 text-center" onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }}>
@@ -748,6 +751,7 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange, activeCat
             className="px-4 h-11"
             onCopied={() => handleCopied(rec.id)}
             onSelect={() => setSelectedIds(new Set([rec.id]))}
+            onDoubleClick={(e) => { if (!isEditing) { e.stopPropagation(); startEditing(rec); } }}
           >
             <span className="truncate text-[13px] text-gray-800">
               {getEmailDisplay(rec)}
@@ -773,6 +777,7 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange, activeCat
             className="px-4 h-11"
             onCopied={() => handleCopied(rec.id)}
             onSelect={() => setSelectedIds(new Set([rec.id]))}
+            onDoubleClick={(e) => { if (!isEditing) { e.stopPropagation(); startEditing(rec); } }}
           >
             <span className="truncate text-[13px] text-gray-700 font-mono">
               {getPasswordDisplay(rec)}
@@ -811,6 +816,7 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange, activeCat
         <td className="px-3 py-0">
           <StatusSelect
             value={rec.status ?? ''}
+            collectionType="emails"
             onChange={(val) => updateField(rec.id, 'status', val)}
           />
         </td>
@@ -849,20 +855,17 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange, activeCat
         </td>
 
         {/* Category */}
-        <td className="px-3 py-0 whitespace-nowrap text-[12px] text-gray-600 truncate">
-          <div className="scale-90 origin-left max-w-[140px]">
-            <CategorySelect
-              value={rec.categoryId}
-              options={categories}
-              onChange={(val) => updateField(rec.id, 'categoryId', val || '')}
-            />
-          </div>
+        <td className="px-3 py-0 whitespace-nowrap text-[12px] text-gray-600 max-w-[140px]">
+          <CategorySelect
+            value={rec.categoryId || null}
+            onChange={(val) => updateField(rec.id, 'categoryId', val || '')}
+          />
         </td>
 
         {/* Linked Cards Count */}
         <td className="px-3 py-0 whitespace-nowrap text-[12px] text-gray-600 font-medium">
           {linkedCardsCount > 0 ? (
-            <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full ring-1 ring-blue-500/10">
+            <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full ring-1 ring-blue-500/10 whitespace-nowrap">
               <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
               {linkedCardsCount} thẻ
             </span>
@@ -873,19 +876,19 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange, activeCat
 
         {/* Actions column */}
         {isEditing ? (
-          <td className="px-2 py-0 text-right" onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }}>
-            <div className="inline-flex items-center gap-1">
+          <td className="px-2 py-0 text-right">
+            <div className="flex items-center justify-end gap-1.5">
               <button
-                onClick={commitEdit}
+                onClick={(e) => { e.stopPropagation(); commitEdit(); }}
                 disabled={savingEdit}
-                className="p-1 rounded hover:bg-emerald-100 text-emerald-600 transition-colors"
+                className="p-1.5 rounded-lg hover:bg-emerald-100 text-emerald-600 transition-colors"
                 title="Save"
               >
                 <Check size={14} />
               </button>
               <button
-                onClick={cancelEditing}
-                className="p-1 rounded hover:bg-gray-200 text-gray-500 transition-colors"
+                onClick={(e) => { e.stopPropagation(); cancelEditing(); }}
+                className="p-1.5 rounded-lg hover:bg-gray-200 text-gray-500 transition-colors"
                 title="Cancel"
               >
                 <X size={14} />
@@ -961,7 +964,7 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange, activeCat
           </div>
         ) : (
           <div className="flex-1 min-h-0 flex flex-col">
-            <div className="flex-1 min-h-0 overflow-auto">
+            <div className="flex-1 min-h-0 overflow-auto custom-scrollbar">
 
               <table className="w-full min-w-[800px] table-fixed border-collapse">
                 <colgroup>
@@ -1034,10 +1037,10 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange, activeCat
                       Note
                     </th>
                     <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
-                      Phân loại
+                      Category
                     </th>
                     <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
-                      Thẻ liên kết
+                      Linked Cards
                     </th>
                     <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
                       Actions

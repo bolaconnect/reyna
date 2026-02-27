@@ -11,9 +11,11 @@ interface CopyCellProps {
   onCopied?: () => void;
   /** Called on click to single-select this row */
   onSelect?: () => void;
+  /** Called on double click */
+  onDoubleClick?: (e: React.MouseEvent) => void;
 }
 
-export function CopyCell({ value, children, className = '', tdClassName = '', onCopied, onSelect }: CopyCellProps) {
+export function CopyCell({ value, children, className = '', tdClassName = '', onCopied, onSelect, onDoubleClick }: CopyCellProps) {
   const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation(); // prevent row onClick from firing
     onSelect?.();        // single-select this row
@@ -42,6 +44,7 @@ export function CopyCell({ value, children, className = '', tdClassName = '', on
     <td
       className={`cursor-pointer select-none whitespace-nowrap ${tdClassName}`}
       onClick={handleCopy}
+      onDoubleClick={onDoubleClick}
     >
       <div className={`flex items-center ${className}`}>
         {children}

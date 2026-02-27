@@ -129,7 +129,18 @@ export function TimerModal({ recordId, collection, label, existingAlarms, onAdd,
     const minSecItems = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'));
 
     useEffect(() => {
-        setAlarms(existingAlarms.filter(a => a.fired === 0 && !a.doneAt));
+        const active = existingAlarms.filter(a => a.fired === 0 && !a.doneAt);
+        setAlarms(active);
+
+        if (active.length > 0) {
+            const current = active[0];
+            setNote(current.note || '');
+            setMode('datetime');
+            const d = new Date(current.triggerAt);
+            const tzOffset = d.getTimezoneOffset() * 60000;
+            const localISOTime = new Date(d.getTime() - tzOffset).toISOString().slice(0, 16);
+            setDateValue(localISOTime);
+        }
     }, [existingAlarms]);
 
     const formatCountdown = (ms: number) => {
@@ -161,8 +172,23 @@ export function TimerModal({ recordId, collection, label, existingAlarms, onAdd,
             if (ms <= 0) { setSaving(false); return; }
             triggerAt = Date.now() + ms;
         }
-        await onAdd({ recordId, collection, label, note, triggerAt });
+
+        // Delete older alarms to enforce 1-alarm-per-record limit
+        for (const alarm of alarms) {
+            await onDelete(alarm.id);
+        }
+
+        await onAdd({ recordId, collection, label, note, triggerAt, updatedAt: Date.now() });
         setNote('');
+        setSaving(false);
+        onClose();
+    };
+
+    const handleDeleteAll = async () => {
+        setSaving(true);
+        for (const alarm of alarms) {
+            await onDelete(alarm.id);
+        }
         setSaving(false);
         onClose();
     };
@@ -174,7 +200,7 @@ export function TimerModal({ recordId, collection, label, existingAlarms, onAdd,
 
     return (
         <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-[2px]"
+            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/30 backdrop-blur-[2px]"
             onClick={e => { if (e.target === e.currentTarget) onClose(); }}
         >
             <motion.div
@@ -245,27 +271,16 @@ export function TimerModal({ recordId, collection, label, existingAlarms, onAdd,
                         className="w-full px-3 py-2.5 text-[13px] bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-gray-400 focus:bg-white resize-none transition-colors"
                     />
 
-                    {/* Pending alarms */}
+                    {/* Delete Action if exists */}
                     <AnimatePresence>
                         {alarms.length > 0 && (
                             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Đang chờ</p>
-                                <div className="space-y-1.5">
-                                    {alarms.map(alarm => (
-                                        <div key={alarm.id} className="flex items-center gap-3 px-3 py-2 bg-blue-50 border border-blue-100 rounded-xl">
-                                            <Clock size={13} className="text-blue-400 shrink-0" />
-                                            <div className="min-w-0 flex-1">
-                                                <div className="text-[12px] font-medium text-gray-700 truncate">{alarm.note || 'Nhắc nhở'}</div>
-                                                <div className="text-[10px] text-blue-500 font-semibold">
-                                                    {formatCountdown(alarm.triggerAt)} • {new Date(alarm.triggerAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
-                                                </div>
-                                            </div>
-                                            <button onClick={() => handleDelete(alarm.id)} className="p-1 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors">
-                                                <Trash2 size={13} />
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
+                                <button
+                                    onClick={handleDeleteAll}
+                                    className="w-full flex items-center justify-center gap-2 h-10 px-3 text-[12px] font-semibold text-red-500 bg-red-50 hover:bg-red-100 rounded-xl transition-colors"
+                                >
+                                    <Trash2 size={14} /> Xóa hẹn giờ hiện tại
+                                </button>
                             </motion.div>
                         )}
                     </AnimatePresence>

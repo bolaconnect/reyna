@@ -52,16 +52,16 @@ export function NotificationCenter({ userId, onClose, onSelectRecord }: Notifica
     };
 
     return (
-        <div className="absolute bottom-full left-full ml-2 mb-0 w-80 bg-white border border-gray-100 rounded-2xl shadow-xl z-50 flex flex-col overflow-hidden"
-            style={{ maxHeight: '420px', bottom: '0', left: '100%' }}>
+        <div className="absolute bottom-full mb-2 lg:mb-3 w-80 bg-white border border-gray-100 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] z-[9999] flex flex-col overflow-hidden origin-bottom-left"
+            style={{ maxHeight: '420px', left: '0' }}>
 
             {/* Header */}
-            <div className="flex items-center justify-between px-3 py-2.5 border-b border-gray-100 shrink-0">
-                <div className="flex items-center gap-1.5">
-                    <Bell size={13} className="text-gray-500" />
-                    <span className="text-[12px] font-semibold text-gray-800">Thông báo</span>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50/50 shrink-0">
+                <div className="flex items-center gap-2">
+                    <Bell size={14} className="text-gray-500" />
+                    <span className="text-[13px] font-bold text-gray-800">Thông báo</span>
                     {unreadCount > 0 && (
-                        <span className="px-1.5 py-0.5 text-[10px] font-bold bg-red-500 text-white rounded-full leading-none">{unreadCount}</span>
+                        <span className="px-1.5 py-0.5 text-[10px] font-bold bg-amber-500 text-white rounded-full leading-none">{unreadCount}</span>
                     )}
                 </div>
                 <div className="flex items-center gap-0.5">
@@ -71,12 +71,12 @@ export function NotificationCenter({ userId, onClose, onSelectRecord }: Notifica
                         </button>
                     )}
                     {items.length > 0 && (
-                        <button onClick={deleteAll} title="Xóa tất cả" className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-400 transition-colors">
-                            <Trash2 size={12} />
+                        <button onClick={deleteAll} title="Xóa tất cả" className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors">
+                            <Trash2 size={13} />
                         </button>
                     )}
-                    <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 text-gray-400 transition-colors">
-                        <X size={12} />
+                    <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
+                        <X size={13} />
                     </button>
                 </div>
             </div>
@@ -102,14 +102,14 @@ export function NotificationCenter({ userId, onClose, onSelectRecord }: Notifica
                                 }
                             }}
                             title={notif.recordId ? "Xem chi tiết" : undefined}
-                            className={`flex items-start gap-2.5 px-3 py-2.5 border-b border-gray-50 cursor-pointer group transition-colors ${notif.readAt ? 'bg-white hover:bg-gray-50' : 'bg-amber-50/60 hover:bg-amber-50'
+                            className={`flex items-start gap-3 px-4 py-3 border-b border-gray-50 cursor-pointer group transition-all ${notif.readAt ? 'bg-white hover:bg-gray-50/80' : 'bg-blue-50/30 hover:bg-blue-50/60'
                                 }`}
                         >
                             {/* Unread dot */}
                             <div className="mt-1 shrink-0">
                                 {notif.readAt
-                                    ? <Check size={11} className="text-gray-300" />
-                                    : <span className="w-2 h-2 bg-amber-400 rounded-full block" />
+                                    ? <Check size={12} className="text-gray-300" />
+                                    : <span className="w-2 h-2 bg-blue-500 rounded-full block shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
                                 }
                             </div>
                             <div className="flex-1 min-w-0">
@@ -134,9 +134,9 @@ export function NotificationCenter({ userId, onClose, onSelectRecord }: Notifica
 
             {/* Footer count */}
             {items.length > 0 && (
-                <div className="px-3 py-1.5 border-t border-gray-50 shrink-0">
-                    <p className="text-[10px] text-gray-400 text-center">
-                        {unreadCount > 0 ? `${unreadCount} chưa đọc · ` : ''}{items.length} thông báo
+                <div className="px-4 py-2 border-t border-gray-50 bg-gray-50/30 shrink-0">
+                    <p className="text-[11px] font-medium text-gray-400 text-center">
+                        {unreadCount > 0 ? <span className="text-blue-600">{unreadCount} chưa đọc</span> : ''}{unreadCount > 0 ? ' · ' : ''}{items.length} thông báo
                     </p>
                 </div>
             )}

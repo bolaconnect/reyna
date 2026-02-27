@@ -16,6 +16,7 @@ export interface LocalCardRecord {
     status: string;
     note: string;
     linkedEmails?: string[]; // Array of associated LocalEmailRecord IDs
+    payAmount?: number;
     updatedAt: number;
 }
 
@@ -64,6 +65,21 @@ export interface EmailCategoryRecord {
     id: string;
     userId: string;
     name: string;
+    order?: number;
+    createdAt: number;
+    updatedAt: number;
+}
+
+export interface StatusRecord {
+    id: string;
+    userId: string;
+    collection: 'cards' | 'emails'; // Which collection this status belongs to
+    name: string;
+    order?: number;
+    colorDot?: string; // e.g. 'bg-emerald-400'
+    colorBg?: string; // e.g. 'bg-emerald-50'
+    colorText?: string; // e.g. 'text-emerald-700'
+    colorBorder?: string; // e.g. 'border-emerald-200'
     createdAt: number;
     updatedAt: number;
 }
@@ -75,6 +91,7 @@ export class AppDB extends Dexie {
     alarms!: Table<AlarmRecord>;
     notifications!: Table<NotificationRecord>;
     categories!: Table<EmailCategoryRecord>;
+    statuses!: Table<StatusRecord>;
 
     constructor() {
         super('PersonalManagerDB');
@@ -90,6 +107,15 @@ export class AppDB extends Dexie {
             alarms: 'id, userId, recordId, triggerAt, fired, doneAt, updatedAt',
             notifications: 'id, userId, createdAt, readAt, recordId, collection, updatedAt',
             categories: 'id, userId, updatedAt',
+        });
+        this.version(7).stores({ // Bumped version to 7 for statuses table
+            cards: 'id, userId, status, updatedAt',
+            emails: 'id, userId, status, categoryId, updatedAt',
+            syncMeta: '[userId+collectionName]',
+            alarms: 'id, userId, recordId, triggerAt, fired, doneAt, updatedAt',
+            notifications: 'id, userId, createdAt, readAt, recordId, collection, updatedAt',
+            categories: 'id, userId, updatedAt',
+            statuses: 'id, userId, collection, updatedAt',
         });
     }
 }

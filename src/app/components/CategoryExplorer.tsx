@@ -51,8 +51,8 @@ function InlineNoteEdit({ value, onSave }: { value: string, onSave: (val: string
     }
     return (
         <div
-            onClick={(e) => { e.stopPropagation(); setLocalVal(value); setEditing(true); }}
-            title="Nhấn để sửa ghi chú"
+            onDoubleClick={(e) => { e.stopPropagation(); setLocalVal(value); setEditing(true); }}
+            title="Nháy đúp để sửa ghi chú"
             className="text-[11px] text-gray-500 line-clamp-2 max-w-[200px] italic cursor-text hover:bg-gray-100/50 p-0.5 rounded transition-colors"
         >
             {value || 'Thêm ghi chú...'}
@@ -143,6 +143,11 @@ export function CategoryExplorer({ activeCategoryId }: CategoryExplorerProps) {
         }
         return list.sort((a, b) => a.id.localeCompare(b.id)); // Fixed sorting to prevent jumping
     }, [emails, activeCategoryId, emailSearch]);
+
+    // Clear selected email when category changes
+    useEffect(() => {
+        setSelectedEmailId(null);
+    }, [activeCategoryId]);
 
     // Get cards linked to selected email
     const linkedCards = useMemo(() => {
@@ -283,7 +288,7 @@ export function CategoryExplorer({ activeCategoryId }: CategoryExplorerProps) {
                 </div>
 
                 {/* Email Table */}
-                <div className="flex-1 overflow-auto custom-scrollbar">
+                <div className="flex-1 overflow-auto custom-scrollbar pb-32">
                     <table className="w-full text-left border-collapse">
                         <thead className="sticky top-0 bg-white z-10 border-b border-gray-100 shadow-sm">
                             <tr>
@@ -296,7 +301,7 @@ export function CategoryExplorer({ activeCategoryId }: CategoryExplorerProps) {
                                 <tr
                                     key={email.id}
                                     onClick={() => setSelectedEmailId(email.id)}
-                                    className={`cursor-pointer transition-colors group relative ${selectedEmailId === email.id ? 'bg-blue-50 z-20' : 'hover:bg-gray-50/50 z-10'}`}
+                                    className={`cursor-pointer transition-colors group relative focus-within:z-[60] ${selectedEmailId === email.id ? 'bg-blue-50 z-20' : 'hover:bg-gray-50/50 z-10'}`}
                                 >
                                     <td className="px-4 py-3 align-top relative z-0">
                                         <div className="flex flex-col gap-1.5">
@@ -316,9 +321,10 @@ export function CategoryExplorer({ activeCategoryId }: CategoryExplorerProps) {
                                     </td>
                                     <td className="px-3 py-3 align-top relative z-50">
                                         <div className="flex flex-col items-end gap-2">
-                                            <div className="scale-90 origin-right relative z-[100]" onClick={e => e.stopPropagation()}>
+                                            <div onClick={(e) => e.stopPropagation()}>
                                                 <StatusSelect
                                                     value={email.status || ''}
+                                                    collectionType="emails"
                                                     onChange={(val) => updateEmailField(email.id, 'status', val)}
                                                 />
                                             </div>
@@ -394,7 +400,7 @@ export function CategoryExplorer({ activeCategoryId }: CategoryExplorerProps) {
                     {selectedEmail && (
                         <button
                             onClick={() => setIsLinking(!isLinking)}
-                            className={`px-3 py-1.5 text-[12px] font-semibold rounded-xl transition-all flex items-center gap-1.5 ${isLinking ? 'bg-gray-100 text-gray-700' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm'
+                            className={`px-3 py-1.5 text-[12px] font-semibold rounded-lg transition-all flex items-center gap-1.5 ${isLinking ? 'bg-gray-100 text-gray-700' : 'bg-blue-50 text-blue-700 hover:bg-blue-100 border border-transparent hover:border-blue-200'
                                 }`}
                         >
                             <Plus size={14} />
@@ -444,16 +450,16 @@ export function CategoryExplorer({ activeCategoryId }: CategoryExplorerProps) {
                     </motion.div>
                 )}
 
-                <div className="flex-1 overflow-auto bg-gray-50/30 custom-scrollbar">
+                <div className="flex-1 overflow-auto bg-gray-50/30 custom-scrollbar pb-32">
                     <AnimatePresence mode="popLayout">
                         {selectedEmailId ? (
                             linkedCards.length > 0 ? (
                                 <table className="w-full text-left border-collapse">
                                     <thead className="sticky top-0 bg-white z-10 border-b border-gray-100 shadow-sm">
                                         <tr>
-                                            <th className="px-4 py-2 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Số thẻ</th>
-                                            <th className="px-3 py-2 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Hạn thẻ</th>
-                                            <th className="px-3 py-2 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">CVV</th>
+                                            <th className="px-4 py-2 text-[11px] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">Số thẻ</th>
+                                            <th className="px-3 py-2 text-[11px] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">Hạn thẻ</th>
+                                            <th className="px-3 py-2 text-[11px] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">CVV</th>
                                             <th className="px-3 py-2 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Trạng thái</th>
                                             <th className="px-3 py-2 text-[11px] font-semibold text-gray-400 uppercase tracking-wider text-center">Nạp (Pay)</th>
                                             <th className="px-3 py-2 text-[11px] font-semibold text-gray-400 uppercase tracking-wider text-center">Hẹn giờ</th>
@@ -469,7 +475,7 @@ export function CategoryExplorer({ activeCategoryId }: CategoryExplorerProps) {
                                             return (
                                                 <tr
                                                     key={card.id}
-                                                    className={`hover:bg-gray-50/50 transition-colors group relative ${hoveredId === card.id ? 'z-20' : 'z-10'}`}
+                                                    className={`hover:bg-gray-50/50 transition-colors group relative focus-within:z-[60] ${hoveredId === card.id ? 'z-20' : 'z-10'}`}
                                                     onMouseEnter={() => setHoveredId(card.id)}
                                                     onMouseLeave={() => setHoveredId(null)}
                                                 >
@@ -510,23 +516,28 @@ export function CategoryExplorer({ activeCategoryId }: CategoryExplorerProps) {
                                                         </CopyCell>
                                                     </td>
                                                     <td className="px-3 py-3">
-                                                        <div className="scale-90 origin-left">
+                                                        <div onClick={(e) => e.stopPropagation()}>
                                                             <StatusSelect
                                                                 value={card.status || ''}
+                                                                collectionType="cards"
                                                                 onChange={(val) => updateField(card.id, 'status', val)}
                                                             />
                                                         </div>
                                                     </td>
-                                                    <td className="px-3 py-3 align-middle text-center">
+                                                    <td className="px-3 py-3 align-middle text-center w-28 whitespace-nowrap">
                                                         <PayInput
                                                             value={card.payAmount}
                                                             onChange={async (val) => {
-                                                                try { await updateDoc(doc(db, 'cards', card.id), { payAmount: val }); }
+                                                                try {
+                                                                    const ts = Date.now();
+                                                                    await updateDoc(doc(db, 'cards', card.id), { payAmount: val, updatedAt: serverTimestamp() });
+                                                                    await dbLocal.cards.update(card.id, { payAmount: val, updatedAt: ts });
+                                                                }
                                                                 catch { toast.error('Lỗi cập nhật Pay'); }
                                                             }}
                                                         />
                                                     </td>
-                                                    <td className="px-3 py-3 text-center">
+                                                    <td className="px-3 py-3 text-center pr-4">
                                                         <AlarmCell
                                                             recordId={`category_card_${card.id}`}
                                                             nearestAlarmTime={nearestAlarmsMap.get(`category_card_${card.id}`) ?? null}

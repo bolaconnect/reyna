@@ -173,7 +173,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
 
     return (
         <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-[2px]"
+            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/30 backdrop-blur-[2px]"
             onClick={e => e.target === e.currentTarget && onClose()}
         >
             <motion.div
