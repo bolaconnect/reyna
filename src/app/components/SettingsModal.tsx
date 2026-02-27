@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { hashPin, usePin } from './PinGuard';
 import { useUserSettings } from '../hooks/useUserSettings';
 import { useNotification } from '../hooks/useNotification';
+import { AdminSnapshotTool } from './AdminSnapshotTool';
 
 // Re-export types that other parts of the app may reference
 export type AppSettings = {
@@ -279,6 +280,9 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                             <PinSection hasPin={hasPin} setHasPin={setHasPin} />
                         </SettingsGroup>
                     </div>
+
+                    {/* Advanced / Optimization */}
+                    <AdminSnapshotTool />
 
                     <p className="text-center text-[11px] text-gray-300">Thay đổi tự động được lưu</p>
                 </div>

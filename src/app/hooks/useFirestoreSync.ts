@@ -8,6 +8,7 @@ import {
 } from 'firebase/firestore';
 import { dbLocal } from '../lib/db';
 import { SyncService, SyncableCollection } from '../services/syncService';
+import { SnapshotService } from '../services/snapshotService';
 import { useAuth } from '../../contexts/AuthContext';
 import { db as firestoreDb } from '../../firebase/config';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -154,6 +155,10 @@ export function useFirestoreSync<T>(
                     if (updates.length > 0 && useDelta) {
                         const latest = Math.max(...updates.map(u => u.updatedAt));
                         await dbLocal.syncMeta.put({ userId: user.uid, collectionName, lastSyncTime: latest });
+
+                        // AUTO-SNAPSHOT CHECK:
+                        // Only check if we are on a scale where snapshots make sense (not small lists)
+                        SnapshotService.autoSnapshotIfNeeded(collectionName, user.uid);
                     }
                 }, (err: any) => {
                     const isIndexError = err?.code === 'failed-precondition' ||

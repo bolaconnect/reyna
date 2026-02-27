@@ -13,6 +13,7 @@ import {
 } from 'firebase/firestore';
 import { dbLocal } from '../lib/db';
 import { db as firestoreDb } from '../../firebase/config';
+import { SnapshotService } from './snapshotService';
 
 export type SyncableCollection = 'cards' | 'emails' | 'alarms' | 'notifications' | 'categories' | 'statuses';
 
@@ -43,43 +44,58 @@ export class SyncService {
         const table = this.getTable(collectionName) as any;
 
         if (currentLastSyncTime === 0) {
-            // FIRST SYNC: Paginated fetch
-            let lastDoc = null;
-            let maxFoundSyncTime = 0;
-            let hasMoreInitial = true;
-
-            while (hasMoreInitial) {
-                let q = query(
-                    collection(firestoreDb, collectionName),
-                    where('userId', '==', userId),
-                    limit(BATCH_SIZE)
-                );
-                if (lastDoc) q = query(q, startAfter(lastDoc));
-
-                const snapshot = await getDocs(q);
-                if (snapshot.empty) break;
-
-                const data = snapshot.docs.map(doc => {
-                    const d = doc.data();
-                    const updatedAt = d.updatedAt instanceof Timestamp ? d.updatedAt.toMillis() : (d.createdAt || Date.now());
-                    if (updatedAt > maxFoundSyncTime) maxFoundSyncTime = updatedAt;
-                    return {
-                        id: doc.id,
-                        ...d,
-                        updatedAt,
-                    };
-                });
-
-                await table.bulkPut(data);
-                lastDoc = snapshot.docs[snapshot.docs.length - 1];
-
-                if (snapshot.size < BATCH_SIZE) hasMoreInitial = false;
+            // TRY SNAPSHOT HYDRATION FIRST (Optimized for 100k rows)
+            try {
+                const snapshotTime = await SnapshotService.hydrateFromSnapshots(collectionName, userId);
+                if (snapshotTime > 0) {
+                    currentLastSyncTime = snapshotTime;
+                    await dbLocal.syncMeta.put({ userId, collectionName, lastSyncTime: currentLastSyncTime });
+                    // Do not return yet, proceed to DELTA SYNC below to catch up
+                }
+            } catch (err) {
+                console.warn(`[SyncService] Snapshot hydration failed for ${collectionName}, falling back to legacy sync.`, err);
             }
 
-            // Set lastSyncTime to max found or now
-            currentLastSyncTime = maxFoundSyncTime > 0 ? maxFoundSyncTime : Date.now();
-            await dbLocal.syncMeta.put({ userId, collectionName, lastSyncTime: currentLastSyncTime });
-            return currentLastSyncTime;
+            // Only do legacy initial fetch if Snapshot didn't work (currentLastSyncTime still 0)
+            if (currentLastSyncTime === 0) {
+                // FIRST SYNC: Paginated fetch (Legacy/Fallback)
+                console.log(`[SyncService] Performing legacy initial fetch for ${collectionName}...`);
+                let lastDoc = null;
+                let maxFoundSyncTime = 0;
+                let hasMoreInitial = true;
+
+                while (hasMoreInitial) {
+                    let q = query(
+                        collection(firestoreDb, collectionName),
+                        where('userId', '==', userId),
+                        limit(BATCH_SIZE)
+                    );
+                    if (lastDoc) q = query(q, startAfter(lastDoc));
+
+                    const snapshot = await getDocs(q);
+                    if (snapshot.empty) break;
+
+                    const data = snapshot.docs.map(doc => {
+                        const d = doc.data();
+                        const updatedAt = d.updatedAt instanceof Timestamp ? d.updatedAt.toMillis() : (d.createdAt || Date.now());
+                        if (updatedAt > maxFoundSyncTime) maxFoundSyncTime = updatedAt;
+                        return {
+                            id: doc.id,
+                            ...d,
+                            updatedAt,
+                        };
+                    });
+
+                    await table.bulkPut(data);
+                    lastDoc = snapshot.docs[snapshot.docs.length - 1];
+
+                    if (snapshot.size < BATCH_SIZE) hasMoreInitial = false;
+                }
+
+                currentLastSyncTime = maxFoundSyncTime > 0 ? maxFoundSyncTime : Date.now();
+                await dbLocal.syncMeta.put({ userId, collectionName, lastSyncTime: currentLastSyncTime });
+                return currentLastSyncTime;
+            }
         }
 
         // DELTA SYNC
@@ -129,6 +145,10 @@ export class SyncService {
         }
 
         await dbLocal.syncMeta.put({ userId, collectionName, lastSyncTime: currentLastSyncTime });
+
+        // AUTO-SNAPSHOT CHECK: After delta sync is complete
+        SnapshotService.autoSnapshotIfNeeded(collectionName, userId);
+
         return currentLastSyncTime;
     }
 
