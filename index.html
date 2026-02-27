@@ -16,9 +16,10 @@
         var decoded = l.search.slice(1).split('&').map(function (s) {
           return s.replace(/~and~/g, '&')
         }).join('?');
-        window.history.replaceState(null, null,
-          l.pathname.slice(0, -1) + decoded + l.hash
-        );
+        // Fix: Ensure there is exactly one '/' between the base path and the decoded route
+        var basePath = l.pathname.replace(/\/$/, '');
+        var newPath = basePath + (decoded.charAt(0) !== '/' ? '/' : '') + decoded;
+        window.history.replaceState(null, null, newPath + l.hash);
       }
     }(window.location))
   </script>
@@ -27,7 +28,7 @@
 
 <body>
   <div id="root"></div>
-  <script type="module" src="src/main.tsx"></script>
+  <script type="module" src="/src/main.tsx"></script>
 </body>
 
 </html>
