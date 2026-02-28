@@ -31,7 +31,7 @@ export class SnapshotService {
      * Reduces reads by fetching mega-documents.
      */
     static async hydrateFromSnapshots(collectionName: SyncableCollection, userId: string): Promise<number> {
-        console.log(`[SnapshotService] Hydrating ${collectionName} for ${userId}...`);
+        // Hydration log is silent by default unless it finds major data
 
         const q = query(
             collection(firestoreDb, 'snapshots'),
@@ -42,7 +42,6 @@ export class SnapshotService {
 
         const snapshot = await getDocs(q);
         if (snapshot.empty) {
-            console.log(`[SnapshotService] No snapshots found for ${collectionName}.`);
             return 0;
         }
 
@@ -66,7 +65,9 @@ export class SnapshotService {
             }
         }
 
-        console.log(`[SnapshotService] Hydrated ${totalRecords} records for ${collectionName}. Max timestamp: ${maxTimestamp}`);
+        if (totalRecords > 0) {
+            console.info(`[SnapshotService] Hydrated ${totalRecords} records for ${collectionName}.`);
+        }
         return maxTimestamp;
     }
 
@@ -130,56 +131,60 @@ export class SnapshotService {
      * Prevents having too many "delta" reads on subsequent logins.
      */
     static async autoSnapshotIfNeeded(collectionName: SyncableCollection, userId: string) {
-        // 1. Get the last snapshot info for this collection
-        const qLast = query(
-            collection(firestoreDb, 'snapshots'),
-            where('userId', '==', userId),
-            where('collectionName', '==', collectionName),
-            orderBy('chunkIndex', 'desc'),
-            limit(1)
-        );
+        try {
+            // 1. Get the last snapshot info for this collection
+            const qLast = query(
+                collection(firestoreDb, 'snapshots'),
+                where('userId', '==', userId),
+                where('collectionName', '==', collectionName),
+                orderBy('chunkIndex', 'desc'),
+                limit(1)
+            );
 
-        const lastSnap = await getDocs(qLast);
-        let lastIndex = -1;
-        let lastTimestamp = 0;
+            const lastSnap = await getDocs(qLast);
+            let lastIndex = -1;
+            let lastTimestamp = 0;
 
-        if (!lastSnap.empty) {
-            const snapDoc = lastSnap.docs[0].data();
-            lastIndex = snapDoc.chunkIndex;
-            lastTimestamp = snapDoc.timestamp;
-        }
+            if (!lastSnap.empty) {
+                const snapDoc = lastSnap.docs[0].data();
+                lastIndex = snapDoc.chunkIndex;
+                lastTimestamp = snapDoc.timestamp;
+            }
 
-        // 2. Query local Dexie for records newer than the last snapshot
-        const table = (dbLocal as any)[collectionName];
-        if (!table) return;
+            // 2. Query local Dexie for records newer than the last snapshot
+            const table = (dbLocal as any)[collectionName];
+            if (!table) return;
 
-        // We count how many records are newer than the last snapshot
-        const newRecords = await table
-            .where('updatedAt')
-            .above(lastTimestamp)
-            .toArray();
+            // We count how many records are newer than the last snapshot
+            const newRecords = await table
+                .where('updatedAt')
+                .above(lastTimestamp)
+                .toArray();
 
-        // 3. If we have enough records for a new chunk
-        if (newRecords.length >= CHUNK_SIZE) {
-            console.log(`[SnapshotService] Auto-Snapshot: Found ${newRecords.length} new records. Creating chunk ${lastIndex + 1}...`);
+            // 3. If we have enough records for a new chunk
+            if (newRecords.length >= CHUNK_SIZE) {
+                console.log(`[SnapshotService] Auto-Snapshot: Found ${newRecords.length} new records. Creating chunk ${lastIndex + 1}...`);
 
-            const chunkData = newRecords.slice(0, CHUNK_SIZE);
-            const maxUpdateInChunk = Math.max(...chunkData.map((r: any) => r.updatedAt));
+                const chunkData = newRecords.slice(0, CHUNK_SIZE);
+                const maxUpdateInChunk = Math.max(...chunkData.map((r: any) => r.updatedAt));
 
-            const newChunkIndex = lastIndex + 1;
-            const chunkId = `${userId}_${collectionName}_${newChunkIndex}`;
+                const newChunkIndex = lastIndex + 1;
+                const chunkId = `${userId}_${collectionName}_${newChunkIndex}`;
 
-            const chunk: SnapshotChunk = {
-                userId,
-                collectionName,
-                chunkIndex: newChunkIndex,
-                data: chunkData,
-                timestamp: maxUpdateInChunk,
-                count: chunkData.length
-            };
+                const chunk: SnapshotChunk = {
+                    userId,
+                    collectionName,
+                    chunkIndex: newChunkIndex,
+                    data: chunkData,
+                    timestamp: maxUpdateInChunk,
+                    count: chunkData.length
+                };
 
-            await setDoc(doc(firestoreDb, 'snapshots', chunkId), chunk);
-            console.log(`[SnapshotService] Auto-Snapshot: Chunk ${newChunkIndex} saved.`);
+                await setDoc(doc(firestoreDb, 'snapshots', chunkId), chunk);
+                console.log(`[SnapshotService] Auto-Snapshot: Chunk ${newChunkIndex} saved.`);
+            }
+        } catch (e: any) {
+            console.warn(`[SnapshotService] autoSnapshotIfNeeded failed for ${collectionName}:`, e.message);
         }
     }
 }

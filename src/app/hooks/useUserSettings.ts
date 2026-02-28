@@ -25,6 +25,9 @@ export interface UserPrefs {
     showSensitiveInfo: boolean;
     // Security
     pinHash: string | null;
+    // Roles & Manager Access
+    role?: 'manager' | 'employee';
+    selectedEmployeeId?: string | null;
 }
 
 const DEFAULTS: UserPrefs = {
@@ -35,6 +38,8 @@ const DEFAULTS: UserPrefs = {
     pageSize: 20,
     showSensitiveInfo: false,
     pinHash: null,
+    role: 'employee',
+    selectedEmployeeId: null,
 };
 
 const LS_KEY = 'userPrefs';
@@ -67,9 +72,11 @@ function writeLocal(prefs: UserPrefs) {
 let listeners: Array<(p: UserPrefs) => void> = [];
 let _prefs: UserPrefs = readLocal();
 let _synced_uid: string | null = null;
+let _unsubs: Array<() => void> = [];
 
 function notify(p: UserPrefs) {
     _prefs = p;
+    console.log('User role updated:', p.role);
     listeners.forEach(fn => fn(p));
 }
 
@@ -87,26 +94,62 @@ export function useUserSettings() {
 
     // Real-time listener for settings
     useEffect(() => {
-        if (!user || _synced_uid === user.uid) return;
+        if (!user) {
+            console.log('useUserSettings: No user, cleaning up');
+            _unsubs.forEach(u => u());
+            _unsubs = [];
+            _synced_uid = null;
+            return;
+        }
 
+        if (_synced_uid === user.uid) {
+            console.log('useUserSettings: Already synced for', user.uid);
+            return;
+        }
+
+        console.log('useUserSettings: Starting sync for', user.uid);
         _synced_uid = user.uid;
-        const ref = doc(db, 'users', user.uid, 'meta', 'settings');
+        _unsubs.forEach(u => u()); // Clean up old ones if any
 
+        const ref = doc(db, 'users', user.uid, 'meta', 'settings');
         const unsub = onSnapshot(ref, (snap) => {
+            console.log('--- meta/settings snapshot ---');
             if (snap.exists()) {
                 const remote = snap.data() as Partial<UserPrefs>;
-                const merged = { ...DEFAULTS, ...readLocal(), ...remote };
+                console.log('Remote data from meta/settings:', remote);
+                const merged = { ...DEFAULTS, ..._prefs, ...remote };
                 writeLocal(merged);
                 notify(merged);
             }
         }, (err) => {
-            console.warn('Settings sync error:', err);
+            console.error('--- meta/settings sync error ---', err);
+            // If it fails, allow retry on next render
             _synced_uid = null;
         });
 
-        return () => {
-            unsub();
+        const rootRef = doc(db, 'users', user.uid);
+        const unsubRoot = onSnapshot(rootRef, (snap) => {
+            console.log('--- root user snapshot ---');
+            if (snap.exists()) {
+                const data = snap.data();
+                console.log('Root user data:', data);
+                if (data.role && data.role !== _prefs.role) {
+                    console.log('Updating role from root document:', data.role);
+                    const next = { ..._prefs, role: data.role as any };
+                    writeLocal(next);
+                    notify(next);
+                }
+            }
+        }, (err) => {
+            console.error('--- root user sync error ---', err);
             _synced_uid = null;
+        });
+
+        _unsubs = [unsub, unsubRoot];
+
+        return () => {
+            // Note: In a singleton pattern, we might not want to kill unsubs on every unmount
+            // if other components are still using them. For now, keep it simple.
         };
     }, [user]);
 

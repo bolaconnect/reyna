@@ -122,6 +122,7 @@ export function TimerModal({ recordId, collection, label, existingAlarms, onAdd,
     const [hours, setHours] = useState(0);
     const [minutes, setMinutes] = useState(5);
     const [seconds, setSeconds] = useState(0);
+    const [isRepeating, setIsRepeating] = useState(false);
     const [saving, setSaving] = useState(false);
     const [alarms, setAlarms] = useState<AlarmRecord[]>([]);
 
@@ -136,6 +137,7 @@ export function TimerModal({ recordId, collection, label, existingAlarms, onAdd,
             const current = active[0];
             setNote(current.note || '');
             setMode('datetime');
+            setIsRepeating(!!current.isRepeating);
             const d = new Date(current.triggerAt);
             const tzOffset = d.getTimezoneOffset() * 60000;
             const localISOTime = new Date(d.getTime() - tzOffset).toISOString().slice(0, 16);
@@ -165,12 +167,20 @@ export function TimerModal({ recordId, collection, label, existingAlarms, onAdd,
         }
 
         let triggerAt: number;
+        let repeatInterval = 0;
+
+        const ms = ((hours * 3600) + (minutes * 60) + seconds) * 1000;
+
         if (mode === 'datetime') {
             triggerAt = new Date(dateValue).getTime();
+            // For datetime mode, if repeating, we use 24h as default or the set countdown 
+            // Better: use the diff from now as interval if countdown wasn't used? 
+            // User requested "repeat until off", so let's stick to the interval logic.
+            repeatInterval = ms > 0 ? ms : 24 * 3600_000;
         } else {
-            const ms = ((hours * 3600) + (minutes * 60) + seconds) * 1000;
             if (ms <= 0) { setSaving(false); return; }
             triggerAt = Date.now() + ms;
+            repeatInterval = ms;
         }
 
         // Delete older alarms to enforce 1-alarm-per-record limit
@@ -178,7 +188,16 @@ export function TimerModal({ recordId, collection, label, existingAlarms, onAdd,
             await onDelete(alarm.id);
         }
 
-        await onAdd({ recordId, collection, label, note, triggerAt, updatedAt: Date.now() });
+        await onAdd({
+            recordId,
+            collection,
+            label,
+            note,
+            triggerAt,
+            updatedAt: Date.now(),
+            isRepeating,
+            repeatInterval: isRepeating ? repeatInterval : undefined
+        });
         setNote('');
         setSaving(false);
         onClose();
@@ -261,6 +280,27 @@ export function TimerModal({ recordId, collection, label, existingAlarms, onAdd,
                             </motion.div>
                         )}
                     </AnimatePresence>
+
+                    {/* Repeat toggle */}
+                    <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border border-gray-100 rounded-xl">
+                        <div className="flex items-center gap-2">
+                            <div className={`p-1.5 rounded-lg ${isRepeating ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400'}`}>
+                                <Clock size={14} className={isRepeating ? "animate-spin-slow" : ""} />
+                            </div>
+                            <div>
+                                <p className="text-[12px] font-bold text-gray-800">Lặp lại</p>
+                                <p className="text-[10px] text-gray-400">Thông báo lại sau mỗi chu kỳ</p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => setIsRepeating(!isRepeating)}
+                            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${isRepeating ? 'bg-blue-600' : 'bg-gray-200'}`}
+                        >
+                            <span
+                                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${isRepeating ? 'translate-x-4' : 'translate-x-0'}`}
+                            />
+                        </button>
+                    </div>
 
                     {/* Note */}
                     <textarea

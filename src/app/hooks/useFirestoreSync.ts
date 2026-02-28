@@ -17,22 +17,26 @@ const EMPTY_ARRAY: any[] = [];
 
 export function useFirestoreSync<T>(
     collectionName: SyncableCollection,
-    refreshKey?: number
+    refreshKey?: number,
+    targetUserId?: string | null
 ) {
     const { user } = useAuth();
+    const effectiveUserId = targetUserId || user?.uid;
     const [loading, setLoading] = useState(true);
-    const [syncing, setSyncing] = useState(false);
     const [readyToListen, setReadyToListen] = useState(false);
+    const [permError, setPermError] = useState(false);
+    const syncingRef = useRef(false);
+    const [syncing, setSyncing] = useState(false);
 
     // Initialize data loaded flag
     const [dataLoaded, setDataLoaded] = useState(false);
 
     // Load from local Dexie — reactive!
     const data = useLiveQuery(async () => {
-        if (!user) return EMPTY_ARRAY as T[];
+        if (!effectiveUserId) return EMPTY_ARRAY as T[];
         try {
             const table = (SyncService as any).getTable ? (SyncService as any).getTable(collectionName) : (dbLocal as any)[collectionName];
-            const items = await table.where('userId').equals(user.uid).toArray();
+            const items = await table.where('userId').equals(effectiveUserId).toArray();
 
             // Filter out soft-deleted & STABLE SORT
             const result = (items as any[])
@@ -60,7 +64,7 @@ export function useFirestoreSync<T>(
             setDataLoaded(true);
             return EMPTY_ARRAY as T[];
         }
-    }, [user, collectionName, refreshKey]) || (EMPTY_ARRAY as T[]);
+    }, [effectiveUserId, collectionName, refreshKey]) || (EMPTY_ARRAY as T[]);
 
     // Trigger loading state updates
     useEffect(() => {
@@ -71,33 +75,44 @@ export function useFirestoreSync<T>(
 
     // Sync with Firestore (Delta/Initial Catch-up)
     const sync = useCallback(async () => {
-        if (!user || syncing) return;
+        if (!effectiveUserId || syncingRef.current || permError) return;
+        syncingRef.current = true;
         setSyncing(true);
         try {
-            await SyncService.syncCollection(collectionName, user.uid);
+            await SyncService.syncCollection(collectionName, effectiveUserId);
             setReadyToListen(true);
-        } catch (err) {
-            console.error(`Sync error for ${collectionName}:`, err);
+        } catch (err: any) {
+            const isIndexBuilding = err?.message && err.message.includes('building');
+            if (isIndexBuilding) {
+                // Silently wait for SyncService to handle the fallback
+                setReadyToListen(true);
+            } else if (err?.code === 'permission-denied') {
+                setPermError(true);
+                console.warn(`[useFirestoreSync] Permission denied for ${collectionName}.`);
+            } else {
+                console.error(`[useFirestoreSync] Sync error for ${collectionName}:`, err?.message || err);
+            }
         } finally {
+            syncingRef.current = false;
             setSyncing(false);
         }
-    }, [user, collectionName, syncing]);
+    }, [effectiveUserId, collectionName, permError]);
 
     // Trigger manual sync on mount and when user/refreshKey changes
     useEffect(() => {
-        if (user) {
+        if (effectiveUserId) {
             sync();
         }
-    }, [user, collectionName, refreshKey, sync]);
+    }, [effectiveUserId, collectionName, refreshKey, sync]);
 
     // Real-time delta listener
     useEffect(() => {
-        if (!user || !readyToListen || syncing) return;
+        if (!effectiveUserId || !readyToListen || syncing) return;
 
         let unsub: (() => void) | undefined;
 
         const startListener = async () => {
-            const meta = await dbLocal.syncMeta.get({ userId: user.uid, collectionName });
+            const meta = await dbLocal.syncMeta.get({ userId: effectiveUserId, collectionName });
             const lastSyncTime = meta?.lastSyncTime || 0;
 
             // For 'categories' and 'statuses', we skip the updatedAt filter to avoid requiring a composite index
@@ -107,12 +122,12 @@ export function useFirestoreSync<T>(
             const q = useDelta
                 ? query(
                     collection(firestoreDb, collectionName),
-                    where('userId', '==', user.uid),
+                    where('userId', '==', effectiveUserId),
                     where('updatedAt', '>', Timestamp.fromMillis(lastSyncTime))
                 )
                 : query(
                     collection(firestoreDb, collectionName),
-                    where('userId', '==', user.uid)
+                    where('userId', '==', effectiveUserId)
                 );
 
             try {
@@ -154,17 +169,21 @@ export function useFirestoreSync<T>(
                     // Update lastSyncTime if there were any updates and we are using delta
                     if (updates.length > 0 && useDelta) {
                         const latest = Math.max(...updates.map(u => u.updatedAt));
-                        await dbLocal.syncMeta.put({ userId: user.uid, collectionName, lastSyncTime: latest });
+                        await dbLocal.syncMeta.put({ userId: effectiveUserId, collectionName, lastSyncTime: latest });
 
                         // AUTO-SNAPSHOT CHECK:
                         // Only check if we are on a scale where snapshots make sense (not small lists)
-                        SnapshotService.autoSnapshotIfNeeded(collectionName, user.uid);
+                        SnapshotService.autoSnapshotIfNeeded(collectionName, effectiveUserId).catch(() => {
+                            // Silently ignore snapshot errors in listener
+                        });
                     }
                 }, (err: any) => {
                     const isIndexError = err?.code === 'failed-precondition' ||
                         (err?.message && (err.message.includes('index') || err.message.includes('Index')));
                     if (isIndexError) {
-                        console.warn(`[useFirestoreSync] Index not ready for ${collectionName}. Real-time listening paused until index is built.`);
+                        // Completely silent if it's an index building issue, as SyncService already reported it once
+                    } else if (err?.code === 'permission-denied') {
+                        setPermError(true);
                     } else {
                         console.error(`[useFirestoreSync] Listener error for ${collectionName}:`, err);
                     }
@@ -179,7 +198,7 @@ export function useFirestoreSync<T>(
         return () => {
             if (unsub) unsub();
         };
-    }, [user, collectionName, readyToListen, syncing]);
+    }, [effectiveUserId, collectionName, readyToListen, syncing]);
 
     return {
         data,

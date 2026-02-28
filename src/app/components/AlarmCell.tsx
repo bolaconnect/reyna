@@ -1,9 +1,10 @@
-import { Check } from 'lucide-react';
+import { Check, Repeat } from 'lucide-react';
 import React, { useState } from 'react';
 
 interface AlarmCellProps {
     recordId: string;
     nearestAlarmTime: number | null; // Trigger timestamp in ms, or null if no alarm
+    isRepeating?: boolean;
     now: number; // Current shared timestamp
     onDone: (alarmId: string) => Promise<void>;
     onClick: () => void;
@@ -36,7 +37,7 @@ function formatRemaining(ms: number): { text: string; urgent: boolean; overdue: 
  * Pure presentational version of AlarmCell. 
  * Externalizing state and ticking into the parent table improves performance and sorting reliability.
  */
-export function AlarmCell({ recordId, nearestAlarmTime, now, onDone, onClick }: AlarmCellProps) {
+export function AlarmCell({ recordId, nearestAlarmTime, isRepeating, now, onDone, onClick }: AlarmCellProps) {
     const [confirming, setConfirming] = useState(false);
 
     const handleDoneClick = async (e: React.MouseEvent) => {
@@ -82,7 +83,10 @@ export function AlarmCell({ recordId, nearestAlarmTime, now, onDone, onClick }: 
                 }
                 className={`w-full h-full py-1.5 text-[13px] font-mono font-semibold tracking-tight rounded transition-colors flex items-center justify-center ${colorClass}`}
             >
-                {text}
+                <div className="flex items-center gap-1">
+                    {text}
+                    {isRepeating && <Repeat size={10} className="text-sky-400 animate-spin-slow" />}
+                </div>
             </button>
 
             {hasAlarm && (

@@ -62,6 +62,7 @@ interface EmailsTableProps {
   searchQuery?: string;
   onSearchChange?: (val: string) => void;
   activeCategoryId?: string | null;
+  targetUserId?: string | null;
 }
 
 /** Format a single email record for quick-copy: fields separated by 2 spaces */
@@ -83,7 +84,7 @@ const TOAST_STYLE = {
   border: 'none',
 };
 
-export function EmailsTable({ refreshKey, searchQuery, onSearchChange, activeCategoryId }: EmailsTableProps) {
+export function EmailsTable({ refreshKey, searchQuery, onSearchChange, activeCategoryId, targetUserId }: EmailsTableProps) {
   const { user } = useAuth();
   const { isVisible } = useVisibility();
   const [loading, setLoading] = useState(true);
@@ -175,10 +176,10 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange, activeCat
     loading: initialLoading,
     syncing,
     refresh
-  } = useFirestoreSync<EmailRecord>('emails', refreshKey);
+  } = useFirestoreSync<EmailRecord>('emails', refreshKey, targetUserId);
 
-  const { data: cards } = useFirestoreSync<CardRecord>('cards');
-  const { data: categories } = useFirestoreSync<EmailCategoryRecord>('categories');
+  const { data: cards } = useFirestoreSync<CardRecord>('cards', undefined, targetUserId);
+  const { data: categories } = useFirestoreSync<EmailCategoryRecord>('categories', undefined, targetUserId);
 
   // Set loading state
   useEffect(() => {
@@ -272,8 +273,10 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange, activeCat
       if (!sortCol) return 0;
       let cmp = 0;
       if (sortCol === 'timer') {
-        const aTime = nearestAlarmsMap.get(a.id) ?? Infinity;
-        const bTime = nearestAlarmsMap.get(b.id) ?? Infinity;
+        const aObj = nearestAlarmsMap.get(a.id);
+        const bObj = nearestAlarmsMap.get(b.id);
+        const aTime = aObj ? aObj.triggerAt : Infinity;
+        const bTime = bObj ? bObj.triggerAt : Infinity;
         if (aTime === bTime) return a.id.localeCompare(b.id);
         cmp = aTime - bTime;
       } else if (sortCol === 'email') cmp = (a.email || '').localeCompare(b.email || '');
@@ -839,7 +842,8 @@ export function EmailsTable({ refreshKey, searchQuery, onSearchChange, activeCat
         <td className="py-0" onClick={e => e.stopPropagation()}>
           <AlarmCell
             recordId={rec.id}
-            nearestAlarmTime={nearestAlarmsMap.get(rec.id) ?? null}
+            nearestAlarmTime={nearestAlarmsMap.get(rec.id)?.triggerAt ?? null}
+            isRepeating={nearestAlarmsMap.get(rec.id)?.isRepeating}
             now={now}
             onDone={handleAlarmDone}
             onClick={() => openTimer(rec.id)}

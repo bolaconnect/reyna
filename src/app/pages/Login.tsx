@@ -3,7 +3,8 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
 } from 'firebase/auth';
-import { auth } from '../../firebase/config';
+import { auth, db } from '../../firebase/config';
+import { doc, setDoc } from 'firebase/firestore';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router';
 import { CreditCard, Eye, EyeOff, AlertCircle } from 'lucide-react';
@@ -39,7 +40,15 @@ export function Login() {
       if (mode === 'login') {
         await signInWithEmailAndPassword(auth, email, password);
       } else {
-        await createUserWithEmailAndPassword(auth, email, password);
+        const credential = await createUserWithEmailAndPassword(auth, email, password);
+        // Create user document in Firestore on registration
+        if (credential.user) {
+          await setDoc(doc(db, 'users', credential.user.uid), {
+            email: credential.user.email,
+            role: 'employee',
+            createdAt: Date.now()
+          });
+        }
       }
       navigate('/dashboard', { replace: true });
     } catch (err: unknown) {

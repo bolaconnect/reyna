@@ -25,9 +25,10 @@ interface StatusSelectProps {
   value: string;
   collectionType: 'cards' | 'emails';
   onChange: (val: string) => void;
+  align?: 'left' | 'right';
 }
 
-export function StatusSelect({ value, collectionType, onChange }: StatusSelectProps) {
+export function StatusSelect({ value, collectionType, onChange, align = 'left' }: StatusSelectProps) {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [showManager, setShowManager] = useState(false);
@@ -103,7 +104,7 @@ export function StatusSelect({ value, collectionType, onChange }: StatusSelectPr
       </button>
 
       {open && (
-        <div className="absolute z-50 top-full left-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[140px] max-h-48 overflow-y-auto custom-scrollbar">
+        <div className={`absolute z-[100] top-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[140px] max-h-48 overflow-y-auto custom-scrollbar ${align === 'right' ? 'right-0' : 'left-0'}`}>
           {/* None / clear option */}
           <button
             type="button"

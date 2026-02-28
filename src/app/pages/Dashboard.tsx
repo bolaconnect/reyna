@@ -14,13 +14,15 @@ import { auth } from '../../firebase/config';
 import { useNotification } from '../hooks/useNotification';
 import { useAlarmPoller } from '../hooks/useAlarms';
 import { NotificationCenter } from '../components/NotificationCenter';
-import { SettingsModal, useSettings } from '../components/SettingsModal';
+import { SettingsModal } from '../components/SettingsModal';
 import { PinGuard, usePin } from '../components/PinGuard';
 import { dbLocal } from '../lib/db';
 import { motion, AnimatePresence } from 'motion/react';
 import { useFirestoreSync } from '../hooks/useFirestoreSync';
+import { useUserSettings } from '../hooks/useUserSettings';
 import { SidebarCategories } from '../components/SidebarCategories';
 import { CategoryExplorer } from '../components/CategoryExplorer';
+import { EmployeeSelector } from '../components/EmployeeSelector';
 
 type Tab = 'cards' | 'emails' | 'categories';
 
@@ -28,7 +30,7 @@ export function Dashboard() {
   const { user, loading } = useAuth();
   const { isVisible, toggleVisibility } = useVisibility();
   const navigate = useNavigate();
-  const { settings, updateSettings } = useSettings();
+  const { prefs: settings, update: updateSettings } = useUserSettings();
   const { lockNow, hasPin } = usePin();
 
   // Background sync for global features
@@ -75,6 +77,12 @@ export function Dashboard() {
   useAlarmPoller({ userId: user?.uid, onNewNotification: handleNewNotification });
 
   useEffect(() => {
+    if (user) {
+      console.log('Dashboard active for user:', user.email, 'Role:', settings.role);
+    }
+  }, [user, settings.role]);
+
+  useEffect(() => {
     if (!loading && !user) navigate('/', { replace: true });
   }, [user, loading, navigate]);
 
@@ -115,9 +123,9 @@ export function Dashboard() {
         initial={false}
         animate={{ width: collapsed ? 64 : 192 }}
         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-        className="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col shrink-0 overflow-visible relative h-full z-[40]"
+        className="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col shrink-0 overflow-visible relative h-full z-[50]"
       >
-        <div className="flex flex-col flex-1 rounded-2xl">
+        <div className="flex flex-col flex-1 min-h-0">
           {/* Logo / Toggle button */}
           <button
             onClick={() => {
@@ -148,8 +156,7 @@ export function Dashboard() {
             </AnimatePresence>
           </button>
 
-          {/* Navigation Items */}
-          <nav className="flex-1 p-2 space-y-1">
+          <nav className="flex-1 overflow-y-auto min-h-0 p-2 space-y-1 custom-scrollbar">
             {navItems.map((item) => (
               <button
                 key={item.id}
@@ -188,7 +195,6 @@ export function Dashboard() {
                 if (id !== null) setTab('categories');
               }}
             />
-            <div className="h-24"></div> {/* Spacer to prevent absolute menu cutoff */}
           </nav>
         </div>
 
@@ -220,7 +226,7 @@ export function Dashboard() {
         )}
 
         {/* Notifications Button */}
-        <div ref={notifRef} className="px-2 pb-1 shrink-0 relative">
+        <div ref={notifRef} className="px-2 pb-1 shrink-0 bg-white relative">
           <button
             onClick={() => setNotifOpen(o => !o)}
             className={`w-full flex items-center rounded-xl text-[13px] font-medium transition-all gap-3.5 px-3 py-2.5 ${notifOpen ? 'bg-amber-50 text-amber-600' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-700'}`}
@@ -259,7 +265,7 @@ export function Dashboard() {
         </div>
 
         {/* User Profile Section */}
-        <div ref={profileRef} className="border-t border-gray-50 p-2 shrink-0 relative">
+        <div ref={profileRef} className="border-t border-gray-50 p-2 shrink-0 bg-white relative">
           <button
             onClick={() => setProfileOpen((o) => !o)}
             className={`w-full flex items-center rounded-xl gap-3 px-2.5 py-2.5 text-[13px] font-medium text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors ${profileOpen ? 'bg-gray-100 text-gray-700' : ''}`}
@@ -283,7 +289,7 @@ export function Dashboard() {
           </button>
 
           {profileOpen && (
-            <div className="absolute bottom-full left-0 mb-2 w-56 bg-white dark:bg-[#1c1c28] border border-gray-100 rounded-xl shadow-2xl z-50 overflow-hidden">
+            <div className="absolute bottom-full left-0 mb-2 w-56 bg-white dark:bg-[#1c1c28] border border-gray-100 rounded-xl shadow-2xl z-[9998] overflow-hidden">
               <div className="px-3 py-3 border-b border-gray-50 bg-gray-50/50 dark:bg-[#23233a]/50">
                 <p className="text-[10px] uppercase font-bold text-gray-400 mb-0.5">Tài khoản</p>
                 <p className="text-[12px] font-bold text-gray-800 truncate">{user.email}</p>
@@ -311,7 +317,16 @@ export function Dashboard() {
         {/* Table Toolbar */}
         <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-100 shrink-0 relative z-[20]">
           <div id="table-toolbar-slot" className="flex items-center gap-2" />
-          <div id="table-filter-slot" className="flex items-center gap-2 flex-1 justify-end" />
+          <div className="flex-1 flex items-center justify-center">
+            {settings.role === 'manager' && (
+              <EmployeeSelector
+                selectedId={settings.selectedEmployeeId ?? null}
+                onSelect={(id) => updateSettings({ selectedEmployeeId: id })}
+                currentUserId={user.uid}
+              />
+            )}
+          </div>
+          <div id="table-filter-slot" className="flex items-center gap-2 justify-end" />
           <div className="flex items-center gap-2">
             <button
               onClick={toggleVisibility}
@@ -339,12 +354,14 @@ export function Dashboard() {
               refreshKey={refreshKey}
               searchQuery={selectedSearch ?? undefined}
               onSearchChange={() => setSelectedSearch(null)}
+              targetUserId={settings.selectedEmployeeId}
             />
           ) : tab === 'emails' ? (
             <EmailsTable
               refreshKey={refreshKey}
               searchQuery={selectedSearch ?? undefined}
               onSearchChange={() => setSelectedSearch(null)}
+              targetUserId={settings.selectedEmployeeId}
             />
           ) : (
             <CategoryExplorer

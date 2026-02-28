@@ -18,6 +18,10 @@ import { SnapshotService } from './snapshotService';
 export type SyncableCollection = 'cards' | 'emails' | 'alarms' | 'notifications' | 'categories' | 'statuses';
 
 export class SyncService {
+    private static reportedBuilding = new Set<string>();
+    private static reportedLegacy = new Set<string>();
+    private static reportedFallback = new Set<string>();
+
     private static getTable(collectionName: SyncableCollection) {
         switch (collectionName) {
             case 'cards': return dbLocal.cards;
@@ -50,16 +54,30 @@ export class SyncService {
                 if (snapshotTime > 0) {
                     currentLastSyncTime = snapshotTime;
                     await dbLocal.syncMeta.put({ userId, collectionName, lastSyncTime: currentLastSyncTime });
-                    // Do not return yet, proceed to DELTA SYNC below to catch up
                 }
-            } catch (err) {
-                console.warn(`[SyncService] Snapshot hydration failed for ${collectionName}, falling back to legacy sync.`, err);
+            } catch (err: any) {
+                const isBuilding = err?.message && err.message.includes('building');
+                const key = `${collectionName}_${userId}_building`;
+                if (isBuilding) {
+                    if (!SyncService.reportedBuilding.has(key)) {
+                        console.info(`[Reyna] Một số chỉ mục (Index) đang được khởi tạo trên Firebase. Hệ thống sẽ tự động dùng chế độ dự phòng.`);
+                        SyncService.reportedBuilding.add(key);
+                    }
+                } else if (err?.code === 'permission-denied') {
+                    throw err;
+                } else {
+                    console.warn(`[SyncService] Snapshot hydration failed for ${collectionName}.`, err?.message);
+                }
             }
 
             // Only do legacy initial fetch if Snapshot didn't work (currentLastSyncTime still 0)
             if (currentLastSyncTime === 0) {
                 // FIRST SYNC: Paginated fetch (Legacy/Fallback)
-                console.log(`[SyncService] Performing legacy initial fetch for ${collectionName}...`);
+                const legacyKey = `${collectionName}_${userId}_legacy`;
+                if (!SyncService.reportedLegacy.has(legacyKey)) {
+                    // console.log(`[SyncService] Performing legacy initial fetch for ${collectionName}...`);
+                    SyncService.reportedLegacy.add(legacyKey);
+                }
                 let lastDoc = null;
                 let maxFoundSyncTime = 0;
                 let hasMoreInitial = true;
@@ -147,7 +165,9 @@ export class SyncService {
         await dbLocal.syncMeta.put({ userId, collectionName, lastSyncTime: currentLastSyncTime });
 
         // AUTO-SNAPSHOT CHECK: After delta sync is complete
-        SnapshotService.autoSnapshotIfNeeded(collectionName, userId);
+        SnapshotService.autoSnapshotIfNeeded(collectionName, userId).catch(err => {
+            console.warn(`[SyncService] Auto-snapshot check failed for ${collectionName}:`, err.message);
+        });
 
         return currentLastSyncTime;
     }
@@ -156,11 +176,8 @@ export class SyncService {
         const meta = await dbLocal.syncMeta.get({ userId, collectionName });
         const lastSyncTime = meta ? meta.lastSyncTime : 0;
 
-        // For 'categories' and 'statuses', we always do a full sync to avoid composite index issues.
-        // These are small enough that this is efficient.
-        if (collectionName === 'categories' || collectionName === 'statuses') {
-            return await this.asyncSyncBatch(collectionName, userId, 0);
-        }
+        // For 'categories' and 'statuses', if we don't have a lastSyncTime, we start from 0.
+        // Otherwise, delta sync is fine or we'll naturally catch up.
 
         if (lastSyncTime > 0) {
             try {
@@ -169,7 +186,11 @@ export class SyncService {
                 const isIndexError = err?.code === 'failed-precondition' ||
                     (err?.message && (err.message.includes('index') || err.message.includes('Index')));
                 if (isIndexError) {
-                    console.warn(`[SyncService] Index not ready for ${collectionName}, falling back to full fetch.`);
+                    const fallbackKey = `${collectionName}_${userId}_fallback`;
+                    if (!SyncService.reportedFallback.has(fallbackKey)) {
+                        // console.info(`[SyncService] Index not ready for ${collectionName}, falling back to full fetch.`);
+                        SyncService.reportedFallback.add(fallbackKey);
+                    }
                     return await this.asyncSyncBatch(collectionName, userId, 0);
                 }
                 throw err;

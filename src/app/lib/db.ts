@@ -44,6 +44,8 @@ export interface AlarmRecord {
     note: string;         // user note
     triggerAt: number;    // unix ms timestamp
     fired: 0 | 1;         // 0 = false, 1 = true (for IndexedDB index compatibility)
+    isRepeating?: boolean;
+    repeatInterval?: number; // interval in ms
     doneAt?: number;      // unix ms when user marked as done
     createdAt: number;
     updatedAt: number;

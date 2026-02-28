@@ -64,9 +64,29 @@ export function useAlarmPoller({ userId, onNewNotification }: UseAlarmsOptions) 
                 updatedAt: serverTimestamp(),
             }, { merge: true });
 
-            // 3. Delete the alarm immediately (user doesn't want history)
-            await dbLocal.alarms.delete(alarm.id);
-            await deleteDoc(doc(db, 'alarms', alarm.id));
+            // 3. Handle Repeat or Delete
+            if (alarm.isRepeating && alarm.repeatInterval) {
+                const nextTrigger = alarm.triggerAt + alarm.repeatInterval;
+                const now2 = Date.now();
+                // Ensure nextTrigger is in the future
+                const finalTrigger = nextTrigger > now2 ? nextTrigger : now2 + alarm.repeatInterval;
+
+                const update = {
+                    fired: 0 as (0 | 1),
+                    triggerAt: finalTrigger,
+                    updatedAt: now2,
+                };
+
+                await dbLocal.alarms.update(alarm.id, update);
+                await setDoc(doc(db, 'alarms', alarm.id), {
+                    ...update,
+                    updatedAt: serverTimestamp(),
+                }, { merge: true });
+            } else {
+                // Delete the alarm immediately (non-repeating)
+                await dbLocal.alarms.delete(alarm.id);
+                await deleteDoc(doc(db, 'alarms', alarm.id));
+            }
 
             onNewNotification?.();
         }
@@ -120,21 +140,21 @@ export function useAlarms({ userId }: { userId: string | undefined }) {
     }, []);
 
     const nearestAlarmsMap = useLiveQuery(async () => {
-        if (!userId) return new Map<string, number>();
+        if (!userId) return new Map<string, { triggerAt: number; isRepeating: boolean }>();
         const alarms = await dbLocal.alarms
             .where('userId').equals(userId)
-            .and(a => !a.doneAt)
+            .and(a => !a.doneAt && a.fired === 0)
             .toArray();
 
-        const map = new Map<string, number>();
+        const map = new Map<string, { triggerAt: number; isRepeating: boolean }>();
         for (const a of alarms) {
             const current = map.get(a.recordId);
-            if (current === undefined || a.triggerAt < current) {
-                map.set(a.recordId, a.triggerAt);
+            if (current === undefined || a.triggerAt < current.triggerAt) {
+                map.set(a.recordId, { triggerAt: a.triggerAt, isRepeating: !!a.isRepeating });
             }
         }
         return map;
-    }, [userId]) || new Map<string, number>();
+    }, [userId]) || new Map<string, { triggerAt: number; isRepeating: boolean }>();
 
     return { addAlarm, deleteAlarm, getAlarmsForRecord, markAsDone, nearestAlarmsMap };
 }

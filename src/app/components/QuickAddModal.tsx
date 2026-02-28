@@ -145,8 +145,9 @@ export function QuickAddModal({ mode, onClose, onImported }: QuickAddModalProps)
       await batch.commit();
       onImported();
       onClose();
-    } catch (e) {
-      setError('Import failed. Please try again.');
+    } catch (e: any) {
+      console.error('[QuickAddModal] Import failed:', e);
+      setError(`Import failed: ${e.message || 'Unknown error'}`);
     } finally {
       setImporting(false);
     }

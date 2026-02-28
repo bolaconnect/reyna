@@ -221,7 +221,7 @@ export function CategoryExplorer({ activeCategoryId }: CategoryExplorerProps) {
         try {
             await updateDoc(doc(db, 'cards', cardId), {
                 linkedEmails: arrayRemove(selectedEmailId),
-                updatedAt: Date.now()
+                updatedAt: serverTimestamp()
             });
             toast.success('Đã hủy liên kết thẻ');
             setUnlinkCardConfirm(null);
@@ -237,7 +237,7 @@ export function CategoryExplorer({ activeCategoryId }: CategoryExplorerProps) {
         try {
             await updateDoc(doc(db, 'cards', cardId), {
                 linkedEmails: arrayUnion(selectedEmailId),
-                updatedAt: Date.now()
+                updatedAt: serverTimestamp()
             });
             setIsLinking(false);
             setLinkSearch('');
@@ -262,7 +262,7 @@ export function CategoryExplorer({ activeCategoryId }: CategoryExplorerProps) {
     return (
         <div className="flex-1 flex overflow-hidden bg-gray-50/30">
             {/* Left Pane: Emails */}
-            <div className="w-[35%] flex flex-col border-r border-gray-100 bg-white">
+            <div className="w-[35%] flex flex-col border-r border-gray-100 bg-white relative z-[20]">
                 <div className="p-4 border-b border-gray-100 bg-gray-50/30 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                         <Folder size={16} className="text-blue-500" />
@@ -301,9 +301,9 @@ export function CategoryExplorer({ activeCategoryId }: CategoryExplorerProps) {
                                 <tr
                                     key={email.id}
                                     onClick={() => setSelectedEmailId(email.id)}
-                                    className={`cursor-pointer transition-colors group relative focus-within:z-[60] ${selectedEmailId === email.id ? 'bg-blue-50 z-20' : 'hover:bg-gray-50/50 z-10'}`}
+                                    className={`cursor-pointer transition-colors group relative focus-within:z-[50] ${selectedEmailId === email.id ? 'bg-blue-50 z-[20]' : 'hover:bg-gray-50/50 z-[10]'}`}
                                 >
-                                    <td className="px-4 py-3 align-top relative z-0">
+                                    <td className="px-4 py-3 align-top">
                                         <div className="flex flex-col gap-1.5">
                                             <div className="flex items-center gap-2">
                                                 <Mail size={14} className={selectedEmailId === email.id ? 'text-blue-500' : 'text-gray-400'} />
@@ -319,13 +319,14 @@ export function CategoryExplorer({ activeCategoryId }: CategoryExplorerProps) {
                                             </div>
                                         </div>
                                     </td>
-                                    <td className="px-3 py-3 align-top relative z-50">
+                                    <td className="px-3 py-3 align-top">
                                         <div className="flex flex-col items-end gap-2">
                                             <div onClick={(e) => e.stopPropagation()}>
                                                 <StatusSelect
                                                     value={email.status || ''}
                                                     collectionType="emails"
                                                     onChange={(val) => updateEmailField(email.id, 'status', val)}
+                                                    align="right"
                                                 />
                                             </div>
                                             <div className="flex items-center justify-end gap-0.5">
@@ -379,7 +380,7 @@ export function CategoryExplorer({ activeCategoryId }: CategoryExplorerProps) {
             </div>
 
             {/* Right Pane: Linked Cards */}
-            <div className="flex-1 flex flex-col bg-gray-50/30 relative">
+            <div className="flex-1 flex flex-col bg-gray-50/30 relative z-[10]">
                 <div className="p-4 border-b border-gray-100 bg-white flex items-center justify-between">
                     <div>
                         <h3 className="text-[14px] font-bold text-gray-900 flex items-center gap-2 mb-1">
@@ -475,46 +476,40 @@ export function CategoryExplorer({ activeCategoryId }: CategoryExplorerProps) {
                                             return (
                                                 <tr
                                                     key={card.id}
-                                                    className={`hover:bg-gray-50/50 transition-colors group relative focus-within:z-[60] ${hoveredId === card.id ? 'z-20' : 'z-10'}`}
+                                                    className={`hover:bg-gray-50/50 transition-colors group relative focus-within:z-[50] ${hoveredId === card.id ? 'z-[20]' : 'z-[10]'}`}
                                                     onMouseEnter={() => setHoveredId(card.id)}
                                                     onMouseLeave={() => setHoveredId(null)}
                                                 >
-                                                    <td className="px-4 py-3">
-                                                        <CopyCell
-                                                            value={card.cardNumber}
-                                                            onCopied={() => handleCopied(card.id)}
-                                                            tdClassName="p-0"
-                                                            className="flex items-center w-full"
-                                                        >
-                                                            <div className="text-[13px] font-mono font-bold text-gray-800 tracking-tight">
-                                                                {revealed ? formatCardNumberSpaced(card.cardNumber) : maskCardNumber(card.cardNumber)}
-                                                            </div>
-                                                        </CopyCell>
-                                                    </td>
-                                                    <td className="px-3 py-3">
-                                                        <CopyCell
-                                                            value={card.expiryDate}
-                                                            onCopied={() => handleCopied(card.id)}
-                                                            tdClassName="p-0"
-                                                            className="flex items-center w-full"
-                                                        >
-                                                            <div className="text-[11px] font-mono text-gray-700">
-                                                                {card.expiryDate ? formatExpiry(card.expiryDate) : '—'}
-                                                            </div>
-                                                        </CopyCell>
-                                                    </td>
-                                                    <td className="px-3 py-3">
-                                                        <CopyCell
-                                                            value={card.cvv}
-                                                            onCopied={() => handleCopied(card.id)}
-                                                            tdClassName="p-0"
-                                                            className="flex items-center w-full"
-                                                        >
-                                                            <div className="text-[11px] font-mono text-gray-700">
-                                                                {revealed ? card.cvv : maskCVV(card.cvv || '•••')}
-                                                            </div>
-                                                        </CopyCell>
-                                                    </td>
+                                                    <CopyCell
+                                                        value={card.cardNumber}
+                                                        onCopied={() => handleCopied(card.id)}
+                                                        tdClassName="px-4 py-3"
+                                                        className="flex items-center w-full"
+                                                    >
+                                                        <div className="text-[13px] font-mono font-bold text-gray-800 tracking-tight">
+                                                            {revealed ? formatCardNumberSpaced(card.cardNumber) : maskCardNumber(card.cardNumber)}
+                                                        </div>
+                                                    </CopyCell>
+                                                    <CopyCell
+                                                        value={card.expiryDate}
+                                                        onCopied={() => handleCopied(card.id)}
+                                                        tdClassName="px-3 py-3"
+                                                        className="flex items-center w-full"
+                                                    >
+                                                        <div className="text-[11px] font-mono text-gray-700">
+                                                            {card.expiryDate ? formatExpiry(card.expiryDate) : '—'}
+                                                        </div>
+                                                    </CopyCell>
+                                                    <CopyCell
+                                                        value={card.cvv}
+                                                        onCopied={() => handleCopied(card.id)}
+                                                        tdClassName="px-3 py-3"
+                                                        className="flex items-center w-full"
+                                                    >
+                                                        <div className="text-[11px] font-mono text-gray-700">
+                                                            {revealed ? card.cvv : maskCVV(card.cvv || '•••')}
+                                                        </div>
+                                                    </CopyCell>
                                                     <td className="px-3 py-3">
                                                         <div onClick={(e) => e.stopPropagation()}>
                                                             <StatusSelect
@@ -540,7 +535,8 @@ export function CategoryExplorer({ activeCategoryId }: CategoryExplorerProps) {
                                                     <td className="px-3 py-3 text-center pr-4">
                                                         <AlarmCell
                                                             recordId={`category_card_${card.id}`}
-                                                            nearestAlarmTime={nearestAlarmsMap.get(`category_card_${card.id}`) ?? null}
+                                                            nearestAlarmTime={nearestAlarmsMap.get(`category_card_${card.id}`)?.triggerAt ?? null}
+                                                            isRepeating={nearestAlarmsMap.get(`category_card_${card.id}`)?.isRepeating}
                                                             now={Date.now()}
                                                             onClick={() => openTimer(card.id)}
                                                             onDone={() => handleAlarmDone(card.id)}

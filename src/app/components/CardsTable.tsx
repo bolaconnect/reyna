@@ -63,6 +63,7 @@ interface CardsTableProps {
   refreshKey?: number;
   searchQuery?: string;
   onSearchChange?: (val: string) => void;
+  targetUserId?: string | null;
 }
 
 /** Format a single card for quick-copy: fields separated by | */
@@ -88,7 +89,7 @@ const TOAST_STYLE = {
   border: 'none',
 };
 
-export function CardsTable({ refreshKey, searchQuery, onSearchChange }: CardsTableProps) {
+export function CardsTable({ refreshKey, searchQuery, onSearchChange, targetUserId }: CardsTableProps) {
   const { user } = useAuth();
   const { isVisible } = useVisibility();
   const [loading, setLoading] = useState(true);
@@ -189,9 +190,9 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange }: CardsTab
     loading: initialLoading,
     syncing,
     refresh
-  } = useFirestoreSync<CardRecord>('cards', refreshKey);
+  } = useFirestoreSync<CardRecord>('cards', refreshKey, targetUserId);
 
-  const { data: allEmails } = useFirestoreSync<EmailRecord>('emails');
+  const { data: allEmails } = useFirestoreSync<EmailRecord>('emails', undefined, targetUserId);
 
   // Set loading state
   useEffect(() => {
@@ -250,8 +251,10 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange }: CardsTab
       if (!sortCol) return 0;
       let cmp = 0;
       if (sortCol === 'timer') {
-        const aTime = nearestAlarmsMap.get(a.id) ?? Infinity;
-        const bTime = nearestAlarmsMap.get(b.id) ?? Infinity;
+        const aObj = nearestAlarmsMap.get(a.id);
+        const bObj = nearestAlarmsMap.get(b.id);
+        const aTime = aObj ? aObj.triggerAt : Infinity;
+        const bTime = bObj ? bObj.triggerAt : Infinity;
         if (aTime === bTime) return a.id.localeCompare(b.id);
         cmp = aTime - bTime;
       } else if (sortCol === 'cardNumber') {
@@ -795,20 +798,18 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange }: CardsTab
 
                     const isOrphaned = card.linkedEmails !== undefined && card.linkedEmails.length === 0;
 
-                    // Priority: orphaned > copied (bright blue) > editing (amber) > selected (light blue) > hovered > default
-                    const rowBg = isOrphaned
-                      ? 'bg-[#Ece7e5]' // Light brownish color for orphaned cards
-                      : isCopied
-                        ? 'bg-blue-100'
-                        : isEditing
-                          ? 'bg-amber-50'
-                          : isSelected
-                            ? 'bg-blue-50'
-                            : isHovered
-                              ? 'bg-gray-50'
-                              : 'bg-white';
+                    // Priority: copied (bright blue) > editing (amber) > selected (light blue) > hovered > default
+                    const rowBg = isCopied
+                      ? 'bg-blue-100'
+                      : isEditing
+                        ? 'bg-amber-50'
+                        : isSelected
+                          ? 'bg-blue-50'
+                          : isHovered
+                            ? 'bg-gray-50'
+                            : 'bg-white';
 
-                    const textColor = isOrphaned && !isCopied && !isEditing && !isSelected && !isHovered ? 'text-amber-900/60' : 'text-gray-800';
+                    const textColor = 'text-gray-800';
 
                     return (
                       <motion.tr
@@ -938,7 +939,8 @@ export function CardsTable({ refreshKey, searchQuery, onSearchChange }: CardsTab
                         <td className="py-0" onClick={e => e.stopPropagation()}>
                           <AlarmCell
                             recordId={card.id}
-                            nearestAlarmTime={nearestAlarmsMap.get(card.id) ?? null}
+                            nearestAlarmTime={nearestAlarmsMap.get(card.id)?.triggerAt ?? null}
+                            isRepeating={nearestAlarmsMap.get(card.id)?.isRepeating}
                             now={now}
                             onDone={handleAlarmDone}
                             onClick={() => openTimer(card.id)}

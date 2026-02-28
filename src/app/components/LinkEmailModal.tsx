@@ -38,8 +38,21 @@ export function LinkEmailModal({ isOpen, onClose, onSave, cardCount }: LinkEmail
         }
     }, [isCreatingNewCat]);
 
+    const selectedEmail = useMemo(() => emails.find(e => e.id === selectedEmailId), [emails, selectedEmailId]);
+
     const handleToggleEmail = (id: string) => {
-        setSelectedEmailId(prev => prev === id ? null : id);
+        if (selectedEmailId === id) {
+            setSelectedEmailId(null);
+            return;
+        }
+
+        const email = emails.find(e => e.id === id);
+        setSelectedEmailId(id);
+
+        if (email?.categoryId) {
+            setTargetCategoryId(email.categoryId);
+            setIsCreatingNewCat(false);
+        }
     };
 
     const handleCreateCategory = async (e: React.FormEvent) => {
@@ -126,9 +139,9 @@ export function LinkEmailModal({ isOpen, onClose, onSave, cardCount }: LinkEmail
                             <div className="flex items-center justify-between">
                                 <label className="text-[13px] font-bold text-gray-700 flex items-center gap-2">
                                     <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[11px]">1</div>
-                                    Chọn danh mục cho Email
+                                    {selectedEmail?.categoryId ? 'Danh mục hiện tại' : 'Chọn danh mục cho Email'}
                                 </label>
-                                {!isCreatingNewCat && (
+                                {!isCreatingNewCat && !selectedEmail?.categoryId && (
                                     <button
                                         onClick={() => setIsCreatingNewCat(true)}
                                         className="text-[12px] text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1 px-2 py-1 rounded-md hover:bg-blue-50 transition-colors"
@@ -138,7 +151,14 @@ export function LinkEmailModal({ isOpen, onClose, onSave, cardCount }: LinkEmail
                                 )}
                             </div>
 
-                            {!isCreatingNewCat ? (
+                            {selectedEmail?.categoryId ? (
+                                <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 flex items-center gap-2">
+                                    <Folder size={16} className="text-blue-500" />
+                                    <span className="text-[13px] text-gray-700">
+                                        Email này đã thuộc danh mục: <strong className="text-gray-900">{categories.find(c => c.id === selectedEmail.categoryId)?.name || 'Không xác định'}</strong>
+                                    </span>
+                                </div>
+                            ) : !isCreatingNewCat ? (
                                 <div className="relative group">
                                     <select
                                         value={targetCategoryId}
