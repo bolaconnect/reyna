@@ -366,6 +366,7 @@ export function Dashboard() {
           ) : (
             <CategoryExplorer
               activeCategoryId={activeEmailCategory}
+              targetUserId={settings.selectedEmployeeId}
             />
           )}
         </div>

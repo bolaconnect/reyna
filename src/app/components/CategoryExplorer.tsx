@@ -23,6 +23,7 @@ import { AlarmRecord, dbLocal } from '../lib/db';
 
 interface CategoryExplorerProps {
     activeCategoryId: string | null;
+    targetUserId?: string | null;
 }
 
 function InlineNoteEdit({ value, onSave }: { value: string, onSave: (val: string) => void }) {
@@ -60,12 +61,12 @@ function InlineNoteEdit({ value, onSave }: { value: string, onSave: (val: string
     );
 }
 
-export function CategoryExplorer({ activeCategoryId }: CategoryExplorerProps) {
+export function CategoryExplorer({ activeCategoryId, targetUserId }: CategoryExplorerProps) {
     const { user } = useAuth();
     const { isVisible } = useVisibility();
-    const { data: emails, loading: emailsLoading } = useFirestoreSync<EmailRecord>('emails');
-    const { data: cards, loading: cardsLoading } = useFirestoreSync<CardRecord>('cards');
-    const { data: categories } = useFirestoreSync<EmailCategoryRecord>('categories');
+    const { data: emails, loading: emailsLoading } = useFirestoreSync<EmailRecord>('emails', undefined, targetUserId);
+    const { data: cards, loading: cardsLoading } = useFirestoreSync<CardRecord>('cards', undefined, targetUserId);
+    const { data: categories } = useFirestoreSync<EmailCategoryRecord>('categories', undefined, targetUserId);
 
     const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
     const [emailSearch, setEmailSearch] = useState('');
@@ -193,13 +194,13 @@ export function CategoryExplorer({ activeCategoryId }: CategoryExplorerProps) {
 
     const handleDeleteEmail = async (emailId: string) => {
         try {
-            await updateDoc(doc(db, 'emails', emailId), { deleted: true, updatedAt: serverTimestamp() });
-            toast.success('Đã xóa email');
+            await updateDoc(doc(db, 'emails', emailId), { categoryId: '', updatedAt: serverTimestamp() });
+            toast.success('Đã gỡ email khỏi danh mục');
             if (selectedEmailId === emailId) setSelectedEmailId(null);
             setDeleteEmailConfirm(null);
         } catch (err) {
-            console.error('Lỗi khi xóa email:', err);
-            toast.error('Lỗi khi xóa email');
+            console.error('Lỗi khi gỡ email:', err);
+            toast.error('Lỗi khi gỡ email');
         }
     };
 
@@ -653,15 +654,15 @@ export function CategoryExplorer({ activeCategoryId }: CategoryExplorerProps) {
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
                     <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-scale-in">
                         <div className="p-6">
-                            <h3 className="text-[16px] font-bold text-gray-900 mb-2">Xác nhận xóa email</h3>
-                            <p className="text-[13px] text-gray-500">Bạn có chắc chắn muốn xóa email này khỏi danh mục? Hành động này không thể hoàn tác.</p>
+                            <h3 className="text-[16px] font-bold text-gray-900 mb-2">Gỡ email khỏi danh mục</h3>
+                            <p className="text-[13px] text-gray-500">Bạn có chắc muốn gỡ email này khỏi danh mục hiện tại? Email sẽ không bị xóa khỏi hệ thống.</p>
                         </div>
                         <div className="px-6 py-4 bg-gray-50 flex items-center justify-end gap-2 border-t border-gray-100">
                             <button onClick={() => setDeleteEmailConfirm(null)} className="px-4 py-2 text-[13px] font-medium text-gray-600 hover:bg-gray-200 rounded-lg transition-colors">
                                 Hủy
                             </button>
-                            <button onClick={() => handleDeleteEmail(deleteEmailConfirm)} className="px-4 py-2 text-[13px] font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors shadow-sm">
-                                Xóa
+                            <button onClick={() => handleDeleteEmail(deleteEmailConfirm)} className="px-4 py-2 text-[13px] font-medium text-white bg-blue-500 hover:bg-blue-600 rounded-lg transition-colors shadow-sm">
+                                Xác nhận gỡ
                             </button>
                         </div>
                     </div>

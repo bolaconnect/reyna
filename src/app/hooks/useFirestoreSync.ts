@@ -57,6 +57,7 @@ export function useFirestoreSync<T>(
                     return a.id.localeCompare(b.id);
                 }) as T[];
 
+            console.log(`[useFirestoreSync] ${collectionName} loaded:`, result.length, 'records for UID:', effectiveUserId);
             setDataLoaded(true);
             return result;
         } catch (e) {
